@@ -47,8 +47,8 @@ fn load(config_path: &PathBuf) -> anyhow::Result<(Config, Engine)> {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let (cfg, mut engine) = load(&cli.config)?;
-    let scraper = Scraper::new(cfg.metrics_url.clone(), 8000);
-    let rpc = RpcClient::new(cfg.rpc_url.clone(), 8000);
+    let scraper = Scraper::new(cfg.metrics_url.clone(), cfg.scrape_timeout_ms);
+    let rpc = RpcClient::new(cfg.rpc_url.clone(), cfg.rpc_timeout_ms);
 
     match cli.cmd {
         Cmd::Check => {

@@ -8,6 +8,8 @@ pub struct Config {
     pub scrape_interval_ms: u64,
     pub rules_path: String,
     pub rpc_url: String,
+    pub scrape_timeout_ms: u64,
+    pub rpc_timeout_ms: u64,
 }
 
 impl Default for Config {
@@ -17,6 +19,8 @@ impl Default for Config {
             scrape_interval_ms: 5000,
             rules_path: "rules/default.toml".to_string(),
             rpc_url: "http://localhost:8080".to_string(),
+            scrape_timeout_ms: 8000,
+            rpc_timeout_ms: 8000,
         }
     }
 }
@@ -73,5 +77,19 @@ mod tests {
         std::env::remove_var("SENTINEL_TELEGRAM_TOKEN");
         std::env::remove_var("SENTINEL_TELEGRAM_CHAT_ID");
         assert!(Secrets::from_env().is_err());
+    }
+
+    #[test]
+    fn timeout_defaults() {
+        let c = Config::from_toml("").expect("parse");
+        assert_eq!(c.scrape_timeout_ms, 8000);
+        assert_eq!(c.rpc_timeout_ms, 8000);
+    }
+
+    #[test]
+    fn timeout_overrides() {
+        let c = Config::from_toml("scrape_timeout_ms = 3000\nrpc_timeout_ms = 4000").expect("parse");
+        assert_eq!(c.scrape_timeout_ms, 3000);
+        assert_eq!(c.rpc_timeout_ms, 4000);
     }
 }
