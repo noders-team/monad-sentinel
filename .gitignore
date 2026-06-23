@@ -1,0 +1,7 @@
+/target
+**/target
+.env
+*.env
+*.token
+*secret*
+.DS_Store

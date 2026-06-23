@@ -1,0 +1,133 @@
+# Декларативный набор алертов Sentinel с дефолтами под пороги VDP.
+# Метрики выверены по живой testnet-ноде (node v0.14.5).
+
+[[rule]]
+id = "scrape_down"
+severity = "critical"
+for_ms = 15000
+repeat_ms = 900000
+vdp_link = "uptime"
+message = "Скрейп :8889 недоступен — нода/otelcol могут лежать"
+kind = "absent"
+metric = "monad_total_uptime_us"
+
+[[rule]]
+id = "sync_stall"
+severity = "critical"
+for_ms = 30000
+repeat_ms = 900000
+vdp_link = "uptime"
+message = "Высота блока не растёт 30с — нода отстаёт/встала"
+kind = "stale"
+metric = "monad_execution_ledger_block_num"
+suppressed_by = ["metrics_stale"]
+
+[[rule]]
+id = "commit_stall"
+severity = "critical"
+for_ms = 30000
+repeat_ms = 900000
+vdp_link = "performance"
+message = "Скорость коммита < 1.5 блока/с (норма ~2.5)"
+kind = "rate"
+metric = "monad_state_consensus_events_commit_block"
+op = "lt"
+threshold = 1.5
+window_ms = 60000
+suppressed_by = ["metrics_stale"]
+
+[[rule]]
+id = "local_timeout_spike"
+severity = "warning"
+for_ms = 60000
+repeat_ms = 3600000
+vdp_link = "performance"
+message = "Всплеск локальных таймаутов раунда (выше адаптивного базлайна)"
+kind = "adaptive_rate"
+metric = "monad_state_consensus_events_local_timeout"
+k = 3.0
+window_ms = 60000
+
+[[rule]]
+id = "execution_lagging"
+severity = "warning"
+for_ms = 60000
+repeat_ms = 3600000
+vdp_link = "performance"
+message = "Исполнение отстаёт от консенсуса (rx_execution_lagging растёт)"
+kind = "rate"
+metric = "monad_state_consensus_events_rx_execution_lagging"
+op = "gt"
+threshold = 0.0
+window_ms = 60000
+
+[[rule]]
+id = "vote_delay_high"
+severity = "warning"
+for_ms = 60000
+repeat_ms = 3600000
+vdp_link = "performance"
+message = "p99 задержки голоса > 800мс"
+kind = "threshold"
+metric = "monad_state_vote_delay_ready_after_timer_start_p99_ms"
+op = "gt"
+value = 800.0
+
+[[rule]]
+id = "peer_loss"
+severity = "warning"
+for_ms = 60000
+repeat_ms = 3600000
+vdp_link = "network"
+message = "Число пиров упало ниже 40"
+kind = "threshold"
+metric = "monad_peer_disc_num_peers"
+op = "lt"
+value = 40.0
+
+[[rule]]
+id = "statesync_active"
+severity = "warning"
+for_ms = 60000
+repeat_ms = 3600000
+vdp_link = "uptime"
+message = "Нода вошла в state-sync (statesync_syncing=1) — отстала от сети"
+kind = "threshold"
+metric = "monad_statesync_syncing"
+op = "ge"
+value = 1.0
+
+[[rule]]
+id = "metrics_stale"
+severity = "critical"
+for_ms = 0
+repeat_ms = 900000
+vdp_link = "uptime"
+message = "Метрики :8889 не обновляются (otel/waltrace-поток мог умереть; нода-зомби). Если rpc_block_stall НЕ горит — цепочка жива, встали метрики → рестарт ноды."
+kind = "freshness"
+max_age_ms = 60000
+
+[[rule]]
+id = "rpc_block_stall"
+severity = "critical"
+for_ms = 30000
+repeat_ms = 900000
+vdp_link = "uptime"
+message = "RPC eth_blockNumber не растёт 30с — цепочка/нода реально встали (независимый от otel сигнал)"
+kind = "stale"
+metric = "rpc_block_number"
+
+[[rule]]
+id = "participation_loss"
+severity = "critical"
+for_ms = 30000
+repeat_ms = 900000
+vdp_link = "uptime"
+message = "Нода жива и раунды идут, но мы НЕ голосуем (vote-rate < 50% от round-rate) — участие в консенсусе потеряно, жжётся VDP-uptime."
+kind = "rate_ratio"
+numerator = "monad_state_consensus_events_created_vote"
+denominator = "monad_state_consensus_events_enter_new_round_qc"
+max_ratio = 0.5
+min_denominator_rate = 1.0
+window_ms = 60000
+suppressed_by = ["metrics_stale"]

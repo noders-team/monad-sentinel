@@ -1,0 +1,7 @@
+# HELP monad_execution_ledger_block_num
+# TYPE monad_execution_ledger_block_num gauge
+monad_execution_ledger_block_num{job="example_node",network="testnet",service_version="0.14.5"} 3.9794841e+07 1782098354704
+monad_state_consensus_events_commit_block{job="example_node"} 838117 1782098354704
+monad_state_validation_errors_invalid_epoch{job="example_node"} 437077 1782098354704
+monad_state_validation_errors_invalid_signature{job="example_node"} 12 1782098354704
+monad_peer_disc_num_peers{job="example_node"} 217 1782098354704
