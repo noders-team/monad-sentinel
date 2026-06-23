@@ -14,13 +14,13 @@ pub fn format_message(f: &Fired) -> String {
     };
     let head = match f.transition {
         Transition::Firing => format!("🔴 [{sev}] {}", f.rule_id),
-        Transition::ReNotify => format!("🔴 [{sev}] (ещё активно) {}", f.rule_id),
+        Transition::ReNotify => format!("🔴 [{sev}] (still active) {}", f.rule_id),
         Transition::Resolved => format!("✅ [RESOLVED] {}", f.rule_id),
     };
     format!("{head}\n{}\nVDP: {}", f.message, f.vdp_link)
 }
 
-/// Выполняет f с до `attempts` попыток; экспоненциальный бэкофф base*2^(n-1) мс между ними.
+/// Executes f with up to `attempts` retries; exponential backoff of base*2^(n-1) ms between them.
 pub fn retry_with_backoff<T, F>(attempts: u32, base_delay_ms: u64, mut f: F) -> anyhow::Result<T>
 where
     F: FnMut() -> anyhow::Result<T>,
@@ -53,7 +53,7 @@ mod tests {
             rule_id: "sync_stall".into(),
             severity: Severity::Critical,
             transition: Transition::Firing,
-            message: "Высота блока не растёт".into(),
+            message: "Block height is not increasing".into(),
             vdp_link: "uptime".into(),
         }
     }

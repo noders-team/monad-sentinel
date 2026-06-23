@@ -51,7 +51,7 @@ impl RuleKind {
                 };
                 match state.baseline(metric) {
                     Some((mean, std)) => r > mean + k * std,
-                    None => false, // базлайн ещё не прогрет
+                    None => false, // baseline not yet warmed up
                 }
             }
             RuleKind::Freshness { max_age_ms } => snap
@@ -81,7 +81,7 @@ impl RuleKind {
         }
     }
 
-    /// Все метрики, которые правило читает из State (для tracked_metrics).
+    /// All metrics that the rule reads from State (for tracked_metrics).
     pub fn tracked(&self) -> Vec<&str> {
         match self {
             RuleKind::RateRatio { numerator, denominator, .. } => vec![numerator, denominator],
@@ -131,11 +131,11 @@ mod tests {
 
     #[test]
     fn rate_below_threshold_fires_for_commit_stall() {
-        // commit_stall: rate < 1.5/с
+        // commit_stall: rate < 1.5/s
         let k = RuleKind::Rate { metric: "c".into(), op: Op::Lt, threshold: 1.5, window_ms: 60_000 };
         let mut st = State::new();
         st.update(&snap_with("c", 0.0, 0), &["c"]);
-        st.update(&snap_with("c", 10.0, 10_000), &["c"]); // 1.0/с < 1.5
+        st.update(&snap_with("c", 10.0, 10_000), &["c"]); // 1.0/s < 1.5
         let last = snap_with("c", 10.0, 10_000);
         assert!(k.active(&st, &last, 10_000, 0));
     }

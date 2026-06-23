@@ -1,5 +1,5 @@
-# Декларативный набор алертов Sentinel с дефолтами под пороги VDP.
-# Метрики выверены по живой testnet-ноде (node v0.14.5).
+# Declarative set of Sentinel alerts with defaults for VDP thresholds.
+# Metrics verified against a live testnet node (node v0.14.5).
 
 [[rule]]
 id = "scrape_down"
@@ -7,7 +7,7 @@ severity = "critical"
 for_ms = 15000
 repeat_ms = 900000
 vdp_link = "uptime"
-message = "Скрейп :8889 недоступен — нода/otelcol могут лежать"
+message = "Scrape endpoint :8889 unavailable — node or otelcol may be down"
 kind = "absent"
 metric = "monad_total_uptime_us"
 
@@ -17,7 +17,7 @@ severity = "critical"
 for_ms = 30000
 repeat_ms = 900000
 vdp_link = "uptime"
-message = "Высота блока не растёт 30с — нода отстаёт/встала"
+message = "Block height has not advanced for 30s — node is stalled or lagging"
 kind = "stale"
 metric = "monad_execution_ledger_block_num"
 suppressed_by = ["metrics_stale"]
@@ -28,7 +28,7 @@ severity = "critical"
 for_ms = 30000
 repeat_ms = 900000
 vdp_link = "performance"
-message = "Скорость коммита < 1.5 блока/с (норма ~2.5)"
+message = "Commit rate < 1.5 blocks/sec (normal ~2.5)"
 kind = "rate"
 metric = "monad_state_consensus_events_commit_block"
 op = "lt"
@@ -42,7 +42,7 @@ severity = "warning"
 for_ms = 60000
 repeat_ms = 3600000
 vdp_link = "performance"
-message = "Всплеск локальных таймаутов раунда (выше адаптивного базлайна)"
+message = "Spike in local round timeouts (above adaptive baseline)"
 kind = "adaptive_rate"
 metric = "monad_state_consensus_events_local_timeout"
 k = 3.0
@@ -54,7 +54,7 @@ severity = "warning"
 for_ms = 60000
 repeat_ms = 3600000
 vdp_link = "performance"
-message = "Исполнение отстаёт от консенсуса (rx_execution_lagging растёт)"
+message = "Execution lagging behind consensus (rx_execution_lagging is increasing)"
 kind = "rate"
 metric = "monad_state_consensus_events_rx_execution_lagging"
 op = "gt"
@@ -67,7 +67,7 @@ severity = "warning"
 for_ms = 60000
 repeat_ms = 3600000
 vdp_link = "performance"
-message = "p99 задержки голоса > 800мс"
+message = "Vote delay p99 > 800ms"
 kind = "threshold"
 metric = "monad_state_vote_delay_ready_after_timer_start_p99_ms"
 op = "gt"
@@ -79,7 +79,7 @@ severity = "warning"
 for_ms = 60000
 repeat_ms = 3600000
 vdp_link = "network"
-message = "Число пиров упало ниже 40"
+message = "Peer count has dropped below 40"
 kind = "threshold"
 metric = "monad_peer_disc_num_peers"
 op = "lt"
@@ -91,7 +91,7 @@ severity = "warning"
 for_ms = 60000
 repeat_ms = 3600000
 vdp_link = "uptime"
-message = "Нода вошла в state-sync (statesync_syncing=1) — отстала от сети"
+message = "Node entered state-sync (statesync_syncing=1) — has fallen behind the network"
 kind = "threshold"
 metric = "monad_statesync_syncing"
 op = "ge"
@@ -103,7 +103,7 @@ severity = "critical"
 for_ms = 0
 repeat_ms = 900000
 vdp_link = "uptime"
-message = "Метрики :8889 не обновляются (otel/waltrace-поток мог умереть; нода-зомби). Если rpc_block_stall НЕ горит — цепочка жива, встали метрики → рестарт ноды."
+message = "Metrics :8889 not updating (otel/waltrace thread may have died; zombie node). If rpc_block_stall is NOT firing, the chain is alive and only metrics are frozen → restart the node."
 kind = "freshness"
 max_age_ms = 60000
 
@@ -113,7 +113,7 @@ severity = "critical"
 for_ms = 30000
 repeat_ms = 900000
 vdp_link = "uptime"
-message = "RPC eth_blockNumber не растёт 30с — цепочка/нода реально встали (независимый от otel сигнал)"
+message = "RPC eth_blockNumber has not advanced for 30s — chain/node is truly stalled (independent of otel signal)"
 kind = "stale"
 metric = "rpc_block_number"
 
@@ -123,7 +123,7 @@ severity = "critical"
 for_ms = 30000
 repeat_ms = 900000
 vdp_link = "uptime"
-message = "Нода жива и раунды идут, но мы НЕ голосуем (vote-rate < 50% от round-rate) — участие в консенсусе потеряно, жжётся VDP-uptime."
+message = "Node is alive and rounds are advancing, but we are NOT voting (vote-rate < 50% of round-rate) — consensus participation lost, burning VDP uptime."
 kind = "rate_ratio"
 numerator = "monad_state_consensus_events_created_vote"
 denominator = "monad_state_consensus_events_enter_new_round_qc"

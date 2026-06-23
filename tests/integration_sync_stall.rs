@@ -21,7 +21,7 @@ fn frozen_block_height_fires_sync_stall() {
     let tracked_refs: Vec<&str> = tracked.iter().map(|s| s.as_str()).collect();
     let mock = Mock(RefCell::new(vec![]));
 
-    // block_num заморожен на 100; тики каждые 5с до 40с
+    // block_num frozen at 100; ticks every 5s up to 40s
     let mut sent = 0;
     for t in (0..=40_000).step_by(5_000) {
         let text = format!(
@@ -34,6 +34,6 @@ fn frozen_block_height_fires_sync_stall() {
     }
     assert!(
         mock.0.borrow().iter().any(|m| m.contains("sync_stall")),
-        "sync_stall должен сработать при заморозке высоты; sent={sent}"
+        "sync_stall should fire when block height is frozen; sent={sent}"
     );
 }

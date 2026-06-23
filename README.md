@@ -1,44 +1,72 @@
 # monad-sentinel
 
-**Self-hostable monitoring & alerting agent for Monad validator operators.**
-Scrapes the node's native `:8889` metrics + independent RPC liveness, evaluates VDP-aware rules (uptime, sync/commit stalls, timeouts, peers, metrics-freeze "zombie node" detection, consensus participation), and pages Telegram. Single static Rust binary, no Prometheus stack required.
+A lightweight, self-hostable alerting agent for Monad validator operators. Scrapes the native metrics endpoint at `:8889`, evaluates declarative rules with defaults tuned for VDP thresholds (98% uptime / 48-hour upgrade window), and sends alerts to Telegram. No Prometheus stack required — ships as a single static Rust binary.
 
-Maintained by [Noders](https://github.com/noders-team) as a public good for the Monad validator community. Licensed under Apache-2.0.
+Maintained by Noders as a public good for the Monad validator community. Licensed under Apache-2.0.
 
 ---
 
-# sentinel-agent (Sentinel M0 — Alerting)
+## What It Does
 
-Лёгкий self-hostable агент для операторов валидаторов Monad: скрейпит нативный `:8889`,
-гоняет правила с дефолтами под пороги VDP (uptime 98% / upgrade 48ч) и пейджит в Telegram.
-Не требует стек Prometheus.
+- Scrapes the node's native OpenTelemetry metrics from `:8889`.
+- Runs an independent RPC liveness check against `eth_blockNumber` (default `:8080`).
+- Evaluates rules defined in `rules/default.toml` against a simple alert state machine.
+- Sends firing and resolved notifications to a Telegram bot.
 
-## Быстрый старт
+No Prometheus, Grafana, or any other external stack is needed.
+
+---
+
+## Quick Start
+
 ```bash
-export SENTINEL_TELEGRAM_TOKEN=...      # из @BotFather
+export SENTINEL_TELEGRAM_TOKEN=...      # obtain from @BotFather
 export SENTINEL_TELEGRAM_CHAT_ID=...
+
 cp sentinel.example.toml sentinel.toml
-cargo run --release -- --config sentinel.toml check   # dry-run
-cargo run --release -- --config sentinel.toml run     # цикл алертинга
+
+cargo run --release -- --config sentinel.toml check   # dry-run: evaluate rules once and print results
+cargo run --release -- --config sentinel.toml run     # start the alerting loop
 ```
 
-Правила — в `rules/default.toml` (декларативно). Секреты — только в env.
+Rules are declared in `rules/default.toml`. Secrets must be supplied exclusively via environment variables — never hardcode them in the config file.
 
-## Обнаружение «зомби-ноды»
-`metrics_stale` срабатывает, когда `:8889` перестаёт обновляться (otel/waltrace-поток умер, а процесс жив). Независимый `rpc_block_stall` следит за `eth_blockNumber` (`rpc_url`, дефолт :8080). Комбинация:
-- `metrics_stale` + НЕ `rpc_block_stall` → метрики мертвы, цепочка жива → рестарт ноды.
-- оба → нода реально встала.
+---
 
-Примечание: `metrics_stale` сравнивает otel-timestamp ноды с часами агента — запускайте агент НА ноде (общие часы). Порог `max_age_ms` (дефолт 60с) поглощает мелкий перекос.
+## Zombie-Node Detection
 
-### М0.5: Совместное срабатывание `sync_stall`/`commit_stall` при замёрзнутых метриках
-При остановке metrics-pipeline (замёрзнутый timestamp `:8889`) сразу срабатывает `metrics_stale`, но **также горят** `sync_stall` и `commit_stall` (читают замёрзшие `monad_execution_ledger_block_num` и `monad_state_consensus_events_commit_block` с `:8889`). Это ожидаемое совместное срабатывание в М0.5.
+`metrics_stale` fires when `:8889` stops updating — the otel/waltrace pipeline inside the node process has died while the process itself remains alive.
 
-**Как различить:**
-- Если `rpc_block_stall` **молчит** → цепочка живая, горит только metrics-pipeline → рестартни ноду.
-- Если `rpc_block_stall` **горит** → цепочка реально встала.
+`rpc_block_stall` independently monitors `eth_blockNumber` via the configured `rpc_url` (default `:8080`).
 
-Полное автоматическое подавление co-fire приходит в М0.6 (Correlation engine).
+Combined interpretation:
 
-## Участие в консенсусе (uptime)
-`participation_loss` срабатывает, когда нода жива и раунды идут, но vote-rate упал ниже 50% от round-rate — валидатор перестал участвовать (жжётся VDP-uptime). Это раннее предупреждение, не точный фондовый uptime% (тот считается по эпохам). Работает на ЗАСТЕЙКАННОМ валидаторе (на full-node сигнала участия нет). Подавляется `metrics_stale` (если метрики замёрзли, vote-rate ложно «нулевой»).
+| `metrics_stale` | `rpc_block_stall` | Meaning |
+|-----------------|-------------------|---------|
+| firing | silent | Metrics pipeline is dead; the chain is alive — restart the node. |
+| firing | firing | The node has genuinely halted. |
+
+**Clock-skew caveat:** `metrics_stale` compares the otel timestamp embedded in `:8889` output against the agent's local clock. Run the agent on the same host as the node so both share the same clock. The `max_age_ms` threshold (default 60 s) absorbs minor skew.
+
+### Co-fire During a Metrics Freeze (M0.5 Behaviour)
+
+When the metrics pipeline stalls (the timestamp from `:8889` freezes), `metrics_stale` fires immediately. At the same time, `sync_stall` and `commit_stall` also fire because they read `monad_execution_ledger_block_num` and `monad_state_consensus_events_commit_block` from `:8889` — and those values are now frozen too. This co-fire is expected in M0.5.
+
+**How to distinguish the root cause:**
+
+- If `rpc_block_stall` is **silent** — the chain is alive; only the metrics pipeline is frozen — restart the node.
+- If `rpc_block_stall` is **firing** — the chain itself has stalled.
+
+Automatic co-fire suppression via a correlation engine is planned for M0.6.
+
+---
+
+## Consensus Participation / Uptime
+
+`participation_loss` fires when the node is alive and rounds are advancing, but the vote-rate has dropped below 50% of the round-rate — the validator has stopped participating in consensus and is burning VDP uptime.
+
+Key points:
+
+- This is an **early warning**, not the exact foundation uptime percentage (which is calculated per epoch).
+- Works only on a **staked validator**; a full node produces no participation signal.
+- Suppressed by `metrics_stale`: if the metrics pipeline is frozen, the vote-rate appears falsely zero and the rule is silenced to avoid spurious alerts.

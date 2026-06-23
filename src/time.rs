@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Текущее время в миллисекундах от эпохи.
+/// Current time in milliseconds since the Unix epoch.
 pub fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

@@ -37,9 +37,9 @@ pub struct Secrets {
 impl Secrets {
     pub fn from_env() -> anyhow::Result<Secrets> {
         let telegram_token = std::env::var("SENTINEL_TELEGRAM_TOKEN")
-            .context("SENTINEL_TELEGRAM_TOKEN не задан")?;
+            .context("SENTINEL_TELEGRAM_TOKEN is not set")?;
         let telegram_chat_id = std::env::var("SENTINEL_TELEGRAM_CHAT_ID")
-            .context("SENTINEL_TELEGRAM_CHAT_ID не задан")?;
+            .context("SENTINEL_TELEGRAM_CHAT_ID is not set")?;
         Ok(Secrets { telegram_token, telegram_chat_id })
     }
 }
@@ -69,7 +69,7 @@ mod tests {
 
     #[test]
     fn secrets_fail_fast_when_missing() {
-        // гарантируем отсутствие
+        // ensure the vars are absent
         std::env::remove_var("SENTINEL_TELEGRAM_TOKEN");
         std::env::remove_var("SENTINEL_TELEGRAM_CHAT_ID");
         assert!(Secrets::from_env().is_err());

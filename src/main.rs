@@ -24,9 +24,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Запустить цикл алертинга
+    /// Start the alerting loop
     Run,
-    /// Одноразовая проверка (dry-run, без Telegram)
+    /// One-shot check (dry-run, no Telegram)
     Check,
 }
 
@@ -70,7 +70,7 @@ fn main() -> anyhow::Result<()> {
                     fired.severity, fired.rule_id, fired.transition, fired.message
                 );
             }
-            println!("check done; {} серий в снимке", snap.samples.len());
+            println!("check done; {} series in snapshot", snap.samples.len());
             Ok(())
         }
         Cmd::Run => {
@@ -85,14 +85,14 @@ fn main() -> anyhow::Result<()> {
             signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&stop))?;
             signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&stop))?;
 
-            eprintln!("sentinel-agent: старт, scrape {} мс", cfg.scrape_interval_ms);
+            eprintln!("sentinel-agent: start, scrape interval {} ms", cfg.scrape_interval_ms);
             while !stop.load(Ordering::Relaxed) {
                 let now = now_ms();
                 let snap = match scraper.scrape() {
                     Ok(body) => {
                         let snap = parse(&body, now);
                         state.update(&snap, &refs);
-                        // прогрев адаптивных базлайнов по rate отслеживаемых метрик
+                        // warm up adaptive baselines from the rate of tracked metrics
                         for &m in &refs {
                             if let Some(r) = state.series(m).and_then(|s| s.rate(60_000)) {
                                 state.observe_baseline(m, r);
@@ -102,7 +102,7 @@ fn main() -> anyhow::Result<()> {
                     }
                     Err(e) => {
                         eprintln!("scrape error: {e:#}");
-                        // пустой снимок → сработает absent-правило scrape_down
+                        // empty snapshot → will trigger the absent rule scrape_down
                         parse("", now)
                     }
                 };
@@ -114,11 +114,11 @@ fn main() -> anyhow::Result<()> {
                 let sent =
                     sentinel_agent::run_once(&mut engine, &state, &snap, now, &notifier);
                 if sent > 0 {
-                    eprintln!("отправлено нотификаций: {sent}");
+                    eprintln!("notifications sent: {sent}");
                 }
                 std::thread::sleep(Duration::from_millis(cfg.scrape_interval_ms));
             }
-            eprintln!("sentinel-agent: остановлен");
+            eprintln!("sentinel-agent: stopped");
             Ok(())
         }
     }

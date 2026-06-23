@@ -13,7 +13,7 @@ use crate::parse::Snapshot;
 use crate::rules::Engine;
 use crate::state::State;
 
-/// Один цикл оценки: прогнать правила и отправить переходы. Возвращает число отправок.
+/// One evaluation cycle: evaluate rules and send transitions. Returns the number of sends.
 pub fn run_once(
     engine: &mut Engine,
     state: &State,

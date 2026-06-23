@@ -1,4 +1,4 @@
-/// Один сэмпл Prometheus-метрики.
+/// A single Prometheus metric sample.
 #[derive(Debug, Clone)]
 pub struct Sample {
     pub name: String,
@@ -7,7 +7,7 @@ pub struct Sample {
     pub ts_ms: Option<i64>,
 }
 
-/// Снимок всех метрик за один скрейп.
+/// Snapshot of all metrics from a single scrape.
 #[derive(Debug, Clone)]
 pub struct Snapshot {
     pub samples: Vec<Sample>,
@@ -15,11 +15,11 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    /// Значение первой метрики с данным именем.
+    /// Value of the first metric with the given name.
     pub fn value(&self, name: &str) -> Option<f64> {
         self.samples.iter().find(|s| s.name == name).map(|s| s.value)
     }
-    /// Сумма значений всех метрик, чьё имя начинается с prefix.
+    /// Sum of values of all metrics whose name starts with prefix.
     pub fn sum_prefix(&self, prefix: &str) -> f64 {
         self.samples
             .iter()
@@ -27,14 +27,14 @@ impl Snapshot {
             .map(|s| s.value)
             .sum()
     }
-    /// Самый свежий встроенный timestamp среди сэмплов (для проверки свежести otel).
+    /// The most recent embedded timestamp among samples (for checking otel freshness).
     pub fn freshest_ts_ms(&self) -> Option<i64> {
         self.samples.iter().filter_map(|s| s.ts_ms).max()
     }
 }
 
-/// Минимальный парсер Prometheus exposition format.
-/// Формат строки: `name{labels} value [timestamp]`. `#`-строки игнорируем.
+/// Minimal Prometheus exposition format parser.
+/// Line format: `name{labels} value [timestamp]`. Lines starting with `#` are ignored.
 pub fn parse(text: &str, scraped_at_ms: i64) -> Snapshot {
     let mut samples = Vec::new();
     for line in text.lines() {
@@ -50,13 +50,13 @@ pub fn parse(text: &str, scraped_at_ms: i64) -> Snapshot {
 }
 
 fn parse_line(line: &str) -> Option<Sample> {
-    // Разделяем имя+лейблы и хвост (value [ts]).
+    // Split name+labels from the tail (value [ts]).
     let (name_labels, rest) = if let Some(brace_end) = line.find('}') {
         let nl = &line[..=brace_end];
         let rest = line[brace_end + 1..].trim_start();
         (nl, rest)
     } else {
-        // нет лейблов: до первого пробела — имя
+        // no labels: everything up to the first space is the name
         let sp = line.find(' ')?;
         (&line[..sp], line[sp..].trim_start())
     };
@@ -72,7 +72,7 @@ fn parse_line(line: &str) -> Option<Sample> {
 fn split_name_labels(s: &str) -> (&str, Vec<(String, String)>) {
     if let Some(open) = s.find('{') {
         let name = &s[..open];
-        let inner = &s[open + 1..s.len().saturating_sub(1)]; // без { }
+        let inner = &s[open + 1..s.len().saturating_sub(1)]; // without { }
         let labels = inner
             .split(',')
             .filter_map(|kv| {

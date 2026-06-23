@@ -21,7 +21,7 @@ enum Phase {
     Firing { last_notified_ms: i64 },
 }
 
-/// Машина состояний одного правила: pending(for) → firing → resolved, с ре-нотификацией.
+/// State machine for a single rule: pending(for) → firing → resolved, with re-notification.
 #[derive(Debug)]
 pub struct AlertState {
     for_ms: i64,
@@ -34,7 +34,7 @@ impl AlertState {
         Self { for_ms, repeat_ms, phase: Phase::Inactive }
     }
 
-    /// Прогон одного тика. Возвращает переход, если он произошёл.
+    /// Processes one tick. Returns the transition, if one occurred.
     pub fn step(&mut self, active: bool, now_ms: i64) -> Option<Transition> {
         match self.phase {
             Phase::Inactive => {
@@ -84,7 +84,7 @@ mod tests {
     fn fires_only_after_for_duration() {
         let mut a = AlertState::new(30_000, 900_000);
         assert_eq!(a.step(true, 0), None);           // pending
-        assert_eq!(a.step(true, 29_000), None);      // ещё pending
+        assert_eq!(a.step(true, 29_000), None);      // still pending
         assert_eq!(a.step(true, 30_000), Some(Transition::Firing));
     }
 

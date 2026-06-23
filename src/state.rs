@@ -3,7 +3,7 @@ use crate::parse::Snapshot;
 
 const MAX_POINTS: usize = 2048;
 
-/// Экспоненциально-взвешенные среднее и дисперсия.
+/// Exponentially weighted moving average and variance.
 #[derive(Debug, Clone)]
 pub struct Ewma {
     alpha: f64,
@@ -40,7 +40,7 @@ impl Default for Ewma {
     }
 }
 
-/// Временной ряд одной метрики (кольцевой буфер последних точек).
+/// Time series for a single metric (ring buffer of recent data points).
 #[derive(Debug, Default)]
 pub struct Series {
     points: VecDeque<(i64, f64)>, // (ts_ms, value)
@@ -62,7 +62,7 @@ impl Series {
         self.points.back().map(|&(_, v)| v)
     }
 
-    /// Скорость в единицах/сек по точкам внутри окна. Рестарт счётчика → 0.
+    /// Rate in units/sec over points within the window. Counter reset → 0.
     pub fn rate(&self, window_ms: i64) -> Option<f64> {
         let (last_ts, last_v) = *self.points.back()?;
         let cutoff = last_ts - window_ms;
@@ -80,7 +80,7 @@ impl Series {
         Some((dv / dt_s).max(0.0))
     }
 
-    /// Сколько мс значение не меняется (None если последнее изменение в окне).
+    /// How many ms the value has not changed (None if the value changed at the current time).
     pub fn stale_for_ms(&self, now_ms: i64) -> Option<i64> {
         let (_, last_v) = *self.points.back()?;
         let mut changed_at = self.points.back()?.0;
@@ -100,7 +100,7 @@ impl Series {
     }
 }
 
-/// Набор отслеживаемых рядов.
+/// Collection of tracked time series.
 #[derive(Debug, Default)]
 pub struct State {
     series: HashMap<String, Series>,
@@ -112,7 +112,7 @@ impl State {
         Self { series: HashMap::new(), baselines: HashMap::new() }
     }
 
-    /// Обновить ряды значениями из снимка по списку имён метрик.
+    /// Update series with values from the snapshot for the given list of metric names.
     pub fn update(&mut self, snap: &Snapshot, names: &[&str]) {
         for &name in names {
             if let Some(v) = snap.value(name) {
@@ -139,7 +139,7 @@ impl State {
         self.baselines.get(key).map(|e| (e.mean(), e.stddev()))
     }
 
-    /// Прямой push значения в именованный ряд (для источников вне снимка :8889, напр. RPC).
+    /// Directly push a value into a named series (for sources outside the :8889 snapshot, e.g. RPC).
     pub fn record(&mut self, name: &str, ts_ms: i64, value: f64) {
         self.series.entry(name.to_string()).or_default().push(ts_ms, value);
     }
@@ -153,7 +153,7 @@ mod tests {
     fn rate_per_second_over_window() {
         let mut s = Series::new();
         s.push(0, 100.0);
-        s.push(10_000, 125.0); // +25 за 10с => 2.5/с
+        s.push(10_000, 125.0); // +25 over 10s => 2.5/s
         assert_eq!(s.rate(60_000), Some(2.5));
     }
 
@@ -161,7 +161,7 @@ mod tests {
     fn counter_reset_clamps_to_zero() {
         let mut s = Series::new();
         s.push(0, 100.0);
-        s.push(1_000, 5.0); // рестарт счётчика
+        s.push(1_000, 5.0); // counter reset
         assert_eq!(s.rate(60_000), Some(0.0));
     }
 
@@ -170,7 +170,7 @@ mod tests {
         let mut s = Series::new();
         s.push(0, 42.0);
         s.push(5_000, 42.0);
-        // не менялось 5с
+        // unchanged for 5s
         assert_eq!(s.stale_for_ms(5_000), Some(5_000));
     }
 

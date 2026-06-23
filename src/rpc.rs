@@ -11,7 +11,7 @@ impl RpcClient {
         Self { url, timeout: Duration::from_millis(timeout_ms) }
     }
 
-    /// Запрос eth_blockNumber; возвращает текущую высоту блока.
+    /// Calls eth_blockNumber; returns the current block height.
     pub fn block_number(&self) -> anyhow::Result<u64> {
         let agent = ureq::AgentBuilder::new().timeout(self.timeout).build();
         let body = agent
@@ -23,7 +23,7 @@ impl RpcClient {
     }
 }
 
-/// Достаёт hex-результат eth_blockNumber из JSON-ответа без полного JSON-парсера.
+/// Extracts the hex result of eth_blockNumber from a JSON response without a full JSON parser.
 pub fn parse_block_hex(body: &str) -> anyhow::Result<u64> {
     let key = "\"result\":\"0x";
     let start = body.find(key).ok_or_else(|| anyhow!("no result field in: {body}"))?;
