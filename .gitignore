@@ -5,3 +5,6 @@
 *.token
 *secret*
 .DS_Store
+
+# SDD scratch (kept private)
+.superpowers/
