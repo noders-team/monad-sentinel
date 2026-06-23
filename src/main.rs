@@ -85,6 +85,7 @@ fn main() -> anyhow::Result<()> {
             signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&stop))?;
             signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&stop))?;
 
+            let mut last_rpc_block: Option<f64> = None;
             eprintln!("sentinel-agent: start, scrape interval {} ms", cfg.scrape_interval_ms);
             while !stop.load(Ordering::Relaxed) {
                 let now = now_ms();
@@ -108,8 +109,16 @@ fn main() -> anyhow::Result<()> {
                 };
                 // RPC poll runs every tick, independent of scrape outcome
                 match rpc.block_number() {
-                    Ok(bn) => state.record("rpc_block_number", now, bn as f64),
-                    Err(e) => eprintln!("rpc error: {e:#}"),
+                    Ok(bn) => {
+                        last_rpc_block = Some(bn as f64);
+                        state.record("rpc_block_number", now, bn as f64);
+                    }
+                    Err(e) => {
+                        eprintln!("rpc error: {e:#}");
+                        // record last-known (or 0) so the series stops advancing →
+                        // rpc_block_stall fires even if RPC is down from cold start
+                        state.record("rpc_block_number", now, last_rpc_block.unwrap_or(0.0));
+                    }
                 }
                 let sent =
                     sentinel_agent::run_once(&mut engine, &state, &snap, now, &notifier);

@@ -37,7 +37,7 @@ Rules are declared in `rules/default.toml`. Secrets must be supplied exclusively
 
 `metrics_stale` fires when `:8889` stops updating — the otel/waltrace pipeline inside the node process has died while the process itself remains alive.
 
-`rpc_block_stall` independently monitors `eth_blockNumber` via the configured `rpc_url` (default `:8080`).
+`rpc_block_stall` independently monitors `eth_blockNumber` via the configured `rpc_url` (default `:8080`). `rpc_block_stall` also fires when the RPC endpoint is unreachable (the agent records the last-known block height, which then stops advancing), so a dead RPC is detected even from a cold start.
 
 Combined interpretation:
 

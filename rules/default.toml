@@ -113,7 +113,7 @@ severity = "critical"
 for_ms = 30000
 repeat_ms = 900000
 vdp_link = "uptime"
-message = "RPC eth_blockNumber has not advanced for 30s — chain/node is truly stalled (independent of otel signal)"
+message = "RPC eth_blockNumber not advancing for 30s — chain/node stalled OR RPC endpoint unreachable (independent of otel)"
 kind = "stale"
 metric = "rpc_block_number"
 
