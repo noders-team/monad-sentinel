@@ -1,6 +1,7 @@
 use crate::auth::session::SessionStore;
 use crate::auth::password;
 use crate::config::WebConfig;
+use crate::ops::{OpExecutor, SudoSystemctl};
 use crate::probe::{ServiceProbe, VersionProbe, LogReader, SystemctlProbe, BinaryVersionProbe, JournalReader};
 use crate::store::Store;
 use serde::Serialize;
@@ -46,22 +47,25 @@ pub struct AppState {
     pub svc_probe: Arc<dyn ServiceProbe>,
     pub ver_probe: Arc<dyn VersionProbe>,
     pub logs: Arc<dyn LogReader>,
+    /// Privileged operation executor — real SudoSystemctl in production; fake in tests.
+    pub executor: Arc<dyn OpExecutor>,
 }
 
 const DEFAULT_RULES_TOML: &str = include_str!("../../sentinel-agent/rules/default.toml");
 
-/// Construct a real AppState from config and an env-supplied password.
-/// `SENTINEL_ADMIN_PASSWORD` must be set. Full bootstrap (TOTP, etc.) is done in Task 8.
-pub fn from_config(cfg: WebConfig, admin_pw: &str) -> anyhow::Result<AppState> {
-    let pw_phc = password::hash(admin_pw)?;
+/// Construct a real AppState from config, credentials, and optional TOTP secret.
+/// Used in production bootstrap (main.rs) once creds have been loaded/generated.
+pub fn from_config_with_creds(
+    cfg: WebConfig,
+    pw_phc: String,
+    totp_secret_b32: String,
+) -> anyhow::Result<AppState> {
     let store = Store::open(&cfg.db_path)?;
     let engine = sentinel_agent::rules::Engine::from_toml(DEFAULT_RULES_TOML)?;
+    let executor = Arc::new(SudoSystemctl { allowed: cfg.allowed_units() });
     Ok(AppState {
         sessions: Arc::new(SessionStore::new()),
-        creds: Arc::new(Mutex::new(Creds {
-            pw_phc,
-            totp_secret_b32: crate::auth::totp::generate_secret_base32([0u8; 20]),
-        })),
+        creds: Arc::new(Mutex::new(Creds { pw_phc, totp_secret_b32 })),
         cfg: Arc::new(cfg),
         store: Arc::new(store),
         login_throttle: Arc::new(Mutex::new(Throttle::default())),
@@ -77,11 +81,19 @@ pub fn from_config(cfg: WebConfig, admin_pw: &str) -> anyhow::Result<AppState> {
         svc_probe: Arc::new(SystemctlProbe),
         ver_probe: Arc::new(BinaryVersionProbe),
         logs: Arc::new(JournalReader),
+        executor,
     })
 }
 
+/// Convenience wrapper for legacy callers (generates a fixed TOTP secret; production should use from_config_with_creds).
+pub fn from_config(cfg: WebConfig, admin_pw: &str) -> anyhow::Result<AppState> {
+    let pw_phc = password::hash(admin_pw)?;
+    let totp_secret_b32 = crate::auth::totp::generate_secret_base32([0u8; 20]);
+    from_config_with_creds(cfg, pw_phc, totp_secret_b32)
+}
+
 /// Test-only helper — exposed unconditionally so integration tests in tests/ can use it.
-/// Default probe fields use fakes that return safe canned data.
+/// Default probe/executor fields use fakes that return safe canned data.
 /// Do not call in production code.
 pub fn test_state_with_password(pw: &str) -> AppState {
     let cfg = WebConfig::default();
@@ -103,6 +115,7 @@ pub fn test_state_with_password(pw: &str) -> AppState {
         svc_probe: Arc::new(NoopServiceProbe),
         ver_probe: Arc::new(NoopVersionProbe),
         logs: Arc::new(NoopLogReader),
+        executor: Arc::new(NoopExecutor),
     }
 }
 
@@ -121,4 +134,11 @@ impl VersionProbe for NoopVersionProbe {
 struct NoopLogReader;
 impl LogReader for NoopLogReader {
     fn tail(&self, _unit: &str, _lines: usize) -> Vec<String> { vec![] }
+}
+
+struct NoopExecutor;
+impl OpExecutor for NoopExecutor {
+    fn run(&self, _op: &crate::ops::Op) -> anyhow::Result<String> {
+        anyhow::bail!("NoopExecutor: not available in test_state_with_password")
+    }
 }

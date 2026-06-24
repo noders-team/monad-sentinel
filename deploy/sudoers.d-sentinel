@@ -1,0 +1,9 @@
+# Install as /etc/sudoers.d/sentinel (chmod 440, owned root:root).
+# Allows the 'sentinel' system user to restart ONLY the three managed units.
+# No shell, no wildcards, no SETENV — minimal privilege.
+#
+# Install:
+#   sudo install -o root -g root -m 440 sudoers.d-sentinel /etc/sudoers.d/sentinel
+#   sudo visudo -c   # validate
+
+sentinel ALL=(root) NOPASSWD: /usr/bin/systemctl restart monad-bft.service, /usr/bin/systemctl restart monad-execution.service, /usr/bin/systemctl restart monad-rpc.service

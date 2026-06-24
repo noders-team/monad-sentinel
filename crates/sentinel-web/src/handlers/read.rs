@@ -87,3 +87,28 @@ pub async fn get_alerts(
     let records: Vec<&AlertRecord> = buf.iter().rev().collect();
     Json(json!(records))
 }
+
+#[derive(Deserialize)]
+pub struct AuditParams {
+    pub limit: Option<usize>,
+}
+
+/// GET /api/audit?limit= — requires auth; returns most recent audit rows, newest-first.
+pub async fn get_audit(
+    _actor: AuthActor,
+    State(st): State<AppState>,
+    Query(params): Query<AuditParams>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let limit = params.limit.unwrap_or(50);
+    let rows = st.store.list_audit(limit)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let out: Vec<serde_json::Value> = rows.iter().map(|r| json!({
+        "ts_ms": r.ts_ms,
+        "actor": r.actor,
+        "op": r.op,
+        "params": r.params,
+        "result": r.result,
+        "detail": r.detail,
+    })).collect();
+    Ok(Json(json!(out)))
+}

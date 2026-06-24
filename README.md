@@ -70,3 +70,78 @@ Key points:
 - This is an **early warning**, not the exact foundation uptime percentage (which is calculated per epoch).
 - Works only on a **staked validator**; a full node produces no participation signal.
 - Suppressed by `metrics_stale`: if the metrics pipeline is frozen, the vote-rate appears falsely zero and the rule is silenced to avoid spurious alerts.
+
+---
+
+## Console (control plane)
+
+`sentinel-web` is a privileged HTTP control plane that lets an operator view node status, metrics, logs, alerts, and issue safe restart operations — all protected by password + TOTP + CSRF.
+
+### Security model
+
+- **VPN-only**: bind `sentinel-web` to `127.0.0.1` (default) or a private interface; never expose it to the public internet.
+- **Session authentication**: password login sets a `sid` (HttpOnly) session cookie.
+- **CSRF protection**: every mutating request requires the `x-csrf` header to match the `csrf` cookie value set at login.
+- **TOTP (second factor)**: every restart operation requires a current TOTP code from the enrolled authenticator app.
+- **Allowlist**: only the three managed units (`monad-bft.service`, `monad-execution.service`, `monad-rpc.service`) can be restarted. The command is always a fixed argv — no shell interpolation.
+- **Unprivileged user**: `sentinel-web` runs as the `sentinel` system user; it gains `NOPASSWD` access to `systemctl restart` for the allowlisted units only via the sudoers snippet.
+- **Audit log**: every restart attempt (including failures) is written to the SQLite audit table with actor, unit, result, and detail.
+
+### Bootstrap
+
+1. **Create the system user and directories:**
+
+   ```bash
+   sudo useradd -r -s /usr/sbin/nologin sentinel
+   sudo mkdir -p /var/lib/sentinel /etc/sentinel
+   sudo chown sentinel:sentinel /var/lib/sentinel
+   ```
+
+2. **Add sentinel to the journal group** (required for log reads):
+
+   ```bash
+   sudo usermod -aG systemd-journal sentinel
+   ```
+
+3. **Install the sudoers allowlist:**
+
+   ```bash
+   sudo install -o root -g root -m 440 deploy/sudoers.d-sentinel /etc/sudoers.d/sentinel
+   sudo visudo -c   # validate syntax
+   ```
+
+4. **Write the environment file** (never commit secrets):
+
+   ```bash
+   sudo tee /etc/sentinel/sentinel-web.env <<'EOF'
+   SENTINEL_ADMIN_PASSWORD=<strong-random-password>
+   SENTINEL_SESSION_KEY=<32-random-bytes-hex>
+   # Optional: Telegram alert forwarding
+   # SENTINEL_TELEGRAM_TOKEN=...
+   # SENTINEL_TELEGRAM_CHAT_ID=...
+   EOF
+   sudo chmod 600 /etc/sentinel/sentinel-web.env
+   sudo chown sentinel:sentinel /etc/sentinel/sentinel-web.env
+   ```
+
+5. **Write the config file** (`/etc/sentinel/sentinel-web.toml`) — see `WebConfig` defaults for all fields.
+
+6. **Copy the binary and install the systemd unit:**
+
+   ```bash
+   sudo install -o root -g root -m 755 target/release/sentinel-web /usr/local/bin/
+   sudo install -o root -g root -m 644 deploy/sentinel-web.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now sentinel-web
+   ```
+
+7. **Enroll your TOTP authenticator**: on first start, `sentinel-web` prints a `otpauth://` enrollment URI to stderr. Scan it once with your authenticator app (Google Authenticator, Aegis, etc.). The TOTP secret is regenerated on each startup in Phase 1; persist it in the env file if you need a stable secret across restarts.
+
+### Environment variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `SENTINEL_ADMIN_PASSWORD` | Yes | Password for the `admin` account |
+| `SENTINEL_SESSION_KEY` | Yes (via env file) | Session signing key (32+ bytes) |
+| `SENTINEL_TELEGRAM_TOKEN` | Optional | Telegram bot token for alert forwarding |
+| `SENTINEL_TELEGRAM_CHAT_ID` | Optional | Telegram chat/channel ID |

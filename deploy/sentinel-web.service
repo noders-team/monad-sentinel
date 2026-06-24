@@ -1,0 +1,26 @@
+[Unit]
+Description=Sentinel Console (web control plane)
+Documentation=https://github.com/noders-team/monad-sentinel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=sentinel
+SupplementaryGroups=systemd-journal
+
+# Environment variables are in the env file; the unit file must not contain secrets.
+EnvironmentFile=/etc/sentinel/sentinel-web.env
+
+ExecStart=/usr/local/bin/sentinel-web --config /etc/sentinel/sentinel-web.toml
+
+Restart=on-failure
+RestartSec=5s
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/sentinel
+
+[Install]
+WantedBy=multi-user.target

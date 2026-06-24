@@ -3,6 +3,7 @@ pub mod auth;
 pub mod config;
 pub mod handlers;
 pub mod middleware;
+pub mod ops;
 pub mod poller;
 pub mod probe;
 pub mod state;
