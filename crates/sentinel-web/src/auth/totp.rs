@@ -7,11 +7,8 @@ impl Totp {
         let bytes = Secret::Encoded(secret_b32.to_string())
             .to_bytes()
             .map_err(|e| anyhow::anyhow!("totp secret: {e:?}"))?;
-        // new_unchecked skips the 128-bit minimum length check, which allows
-        // use of RFC 6238 test vectors (e.g. 80-bit secrets in the spec).
-        // Production callers should use generate_secret_base32() which produces
-        // a 160-bit secret meeting the rfc-4226 recommended length.
-        let totp = TOTP::new_unchecked(Algorithm::SHA1, 6, 1, 30, bytes);
+        let totp = TOTP::new(Algorithm::SHA1, 6, 1, 30, bytes)
+            .map_err(|e| anyhow::anyhow!("totp config: {e:?}"))?;
         Ok(Totp(totp))
     }
 
@@ -32,13 +29,32 @@ pub fn generate_secret_base32(rng_bytes: [u8; 20]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn checked_constructor_rejects_short_secret() {
+        // An 80-bit (10-byte) secret must be rejected by the checked constructor.
+        let short_b32 = Secret::Raw(vec![0u8; 10]).to_encoded().to_string();
+        assert!(Totp::from_base32(&short_b32).is_err());
+    }
+
     #[test]
     fn known_vector_checks() {
-        // RFC 6238-style: build from a fixed secret, accept the code for its own step.
-        let t = Totp::from_base32("JBSWY3DPEHPK3PXP").unwrap();
+        // Use a 160-bit (20-byte) secret produced by generate_secret_base32,
+        // which the checked constructor accepts.
+        let fixed_bytes: [u8; 20] = [
+            0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4a,
+            0x4b, 0x4c, 0x4d, 0x4e, 0x4f, 0x50, 0x51, 0x52, 0x53, 0x54,
+        ];
+        let secret = generate_secret_base32(fixed_bytes);
+        let t = Totp::from_base32(&secret).unwrap();
+
         let now = 59u64;
         let code = t.current(now);
+        // The correct code at 'now' must pass.
         assert!(t.check(&code, now));
-        assert!(!t.check("000000", now.wrapping_add(10_000)));
+        // A code from a far-apart time step must be rejected at 'now'.
+        let far_ts = now + 300; // 10 steps away, well outside the 1-step window
+        let far_code = t.current(far_ts);
+        assert!(!t.check(&far_code, now));
     }
 }

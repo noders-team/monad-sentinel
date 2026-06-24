@@ -13,6 +13,12 @@ pub struct SessionStore {
     inner: Mutex<HashMap<String, Session>>,
 }
 
+impl Default for SessionStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SessionStore {
     pub fn new() -> Self {
         SessionStore { inner: Mutex::new(HashMap::new()) }
