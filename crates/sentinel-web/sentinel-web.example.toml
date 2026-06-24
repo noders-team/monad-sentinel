@@ -1,5 +1,5 @@
 # Sentinel Console (sentinel-web) non-secret config. Secrets via env:
-#   SENTINEL_ADMIN_PASSWORD (first-run bootstrap), SENTINEL_SESSION_KEY
+#   SENTINEL_ADMIN_PASSWORD (first-run bootstrap)
 listen_addr = "127.0.0.1:8088"   # localhost only; reach via Tailscale/VPN
 db_path = "sentinel-web.sqlite"
 scrape_interval_ms = 5000

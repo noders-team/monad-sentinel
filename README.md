@@ -115,7 +115,6 @@ Key points:
    ```bash
    sudo tee /etc/sentinel/sentinel-web.env <<'EOF'
    SENTINEL_ADMIN_PASSWORD=<strong-random-password>
-   SENTINEL_SESSION_KEY=<32-random-bytes-hex>
    # Optional: Telegram alert forwarding
    # SENTINEL_TELEGRAM_TOKEN=...
    # SENTINEL_TELEGRAM_CHAT_ID=...
@@ -135,13 +134,14 @@ Key points:
    sudo systemctl enable --now sentinel-web
    ```
 
-7. **Enroll your TOTP authenticator**: on first start, `sentinel-web` prints a `otpauth://` enrollment URI to stderr. Scan it once with your authenticator app (Google Authenticator, Aegis, etc.). The TOTP secret is regenerated on each startup in Phase 1; persist it in the env file if you need a stable secret across restarts.
+7. **Enroll your TOTP authenticator**: on first start, `sentinel-web` generates a TOTP secret, persists it in the SQLite DB (`creds` table), and prints a `otpauth://` enrollment URI to stderr. Scan it once with your authenticator app (Google Authenticator, Aegis, etc.). On subsequent starts the stored secret is reused — no re-enrollment needed. To reset enrollment, delete (or move) the DB file; the next start will generate and print a new URI.
 
 ### Environment variables
 
 | Variable | Required | Description |
 |---|---|---|
 | `SENTINEL_ADMIN_PASSWORD` | Yes | Password for the `admin` account |
-| `SENTINEL_SESSION_KEY` | Yes (via env file) | Session signing key (32+ bytes) |
 | `SENTINEL_TELEGRAM_TOKEN` | Optional | Telegram bot token for alert forwarding |
 | `SENTINEL_TELEGRAM_CHAT_ID` | Optional | Telegram chat/channel ID |
+
+> **Note on session security:** Phase 1 uses opaque in-memory session tokens (256-bit CSPRNG); there is no cookie-signing key. This is a deliberate deviation from the original "signed cookie" design — revisit if sessions move to a signed/stateless scheme.

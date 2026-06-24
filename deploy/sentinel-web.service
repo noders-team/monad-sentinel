@@ -17,7 +17,8 @@ Restart=on-failure
 RestartSec=5s
 
 # Security hardening
-NoNewPrivileges=yes
+# NoNewPrivileges is intentionally NOT set: the restart op uses `sudo` (setuid),
+# which NoNewPrivileges would block — causing "sudo: effective uid is not 0" at runtime.
 ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=/var/lib/sentinel
