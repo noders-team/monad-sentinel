@@ -1,0 +1,14 @@
+# Sentinel Console (sentinel-web) non-secret config. Secrets via env:
+#   SENTINEL_ADMIN_PASSWORD (first-run bootstrap), SENTINEL_SESSION_KEY
+listen_addr = "127.0.0.1:8088"   # localhost only; reach via Tailscale/VPN
+db_path = "sentinel-web.sqlite"
+scrape_interval_ms = 5000
+metrics_url = "http://localhost:8889/metrics"
+dev_insecure_cookies = false     # true ONLY for plain-localhost dev (drops Secure flag)
+
+[[services]]
+name = "BFT"
+unit = "monad-bft.service"
+binary = "/usr/local/bin/monad-node"
+kind = "bft"
+github_repo = "category-labs/monad-bft"
