@@ -85,13 +85,6 @@ pub fn from_config_with_creds(
     })
 }
 
-/// Convenience wrapper for legacy callers (generates a fixed TOTP secret; production should use from_config_with_creds).
-pub fn from_config(cfg: WebConfig, admin_pw: &str) -> anyhow::Result<AppState> {
-    let pw_phc = password::hash(admin_pw)?;
-    let totp_secret_b32 = crate::auth::totp::generate_secret_base32([0u8; 20]);
-    from_config_with_creds(cfg, pw_phc, totp_secret_b32)
-}
-
 /// Test-only helper — exposed unconditionally so integration tests in tests/ can use it.
 /// Default probe/executor fields use fakes that return safe canned data.
 /// Do not call in production code.

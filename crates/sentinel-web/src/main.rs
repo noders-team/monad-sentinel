@@ -3,6 +3,7 @@ use sentinel_web::auth::password;
 use sentinel_web::auth::totp::{generate_secret_base32, Totp};
 use sentinel_web::config::WebConfig;
 use sentinel_web::state::from_config_with_creds;
+use sentinel_web::store::Store;
 
 #[derive(Parser)]
 #[command(about = "Sentinel Console — web control plane for the Monad validator node")]
@@ -28,33 +29,57 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let addr = cfg.listen_addr.clone();
-    let db_path = cfg.db_path.clone();
 
-    // Bootstrap credentials.
-    // In this phase, credentials are stored as AppState fields (not persisted in the db).
-    // The store is opened by from_config_with_creds; here we only validate the path is usable.
-    let _ = &db_path; // used below by from_config_with_creds via cfg.db_path
-    let admin_pw = std::env::var("SENTINEL_ADMIN_PASSWORD")
-        .map_err(|_| anyhow::anyhow!("SENTINEL_ADMIN_PASSWORD must be set"))?;
-    let pw_phc = password::hash(&admin_pw)?;
+    // Bootstrap credentials — idempotent.
+    //
+    // On first run (no creds row in the database):
+    //   • SENTINEL_ADMIN_PASSWORD must be set — its hash is persisted.
+    //   • A fresh TOTP secret is generated, persisted, and the otpauth:// URI is printed to
+    //     stderr ONCE so the operator can enroll their authenticator app.
+    //
+    // On subsequent starts:
+    //   • Persisted credentials are loaded from the database; SENTINEL_ADMIN_PASSWORD is ignored.
+    //   • The otpauth:// URI is NOT printed again (the secret has not changed).
+    //   • This means a crash + Restart=on-failure does NOT invalidate the operator's 2FA enrollment.
+    //
+    // Password note: SENTINEL_ADMIN_PASSWORD is only consumed on first bootstrap. To change the
+    // password after initial setup, use the admin password-change endpoint or wipe the creds row.
+    let bootstrap_store = Store::open(&cfg.db_path)?;
+    let (pw_phc, totp_secret) = match bootstrap_store.get_creds()? {
+        Some((pw_phc, totp_secret)) => {
+            // Credentials already persisted — reuse them without printing the enrollment URI.
+            eprintln!("sentinel-web: credentials loaded from database (TOTP enrollment unchanged)");
+            (pw_phc, totp_secret)
+        }
+        None => {
+            // First run — require the password env var and generate a new TOTP secret.
+            let admin_pw = std::env::var("SENTINEL_ADMIN_PASSWORD")
+                .map_err(|_| anyhow::anyhow!("SENTINEL_ADMIN_PASSWORD must be set on first run"))?;
+            let pw_phc = password::hash(&admin_pw)?;
 
-    // Generate a new TOTP secret on every startup (operator must re-enroll on first run or key rotation).
-    // In a production setup you would persist the secret; for Phase 1 we print it once.
-    let rng_bytes: [u8; 20] = {
-        use rand::RngExt;
-        let mut b = [0u8; 20];
-        rand::rng().fill(&mut b);
-        b
+            let rng_bytes: [u8; 20] = {
+                use rand::RngExt;
+                let mut b = [0u8; 20];
+                rand::rng().fill(&mut b);
+                b
+            };
+            let totp_secret = generate_secret_base32(rng_bytes);
+
+            bootstrap_store.set_creds(&pw_phc, &totp_secret)?;
+
+            // Verify the secret is decodable before printing (sanity check).
+            let _totp = Totp::from_base32(&totp_secret)?;
+
+            eprintln!("=== TOTP ENROLLMENT — scan ONCE with your authenticator app ===");
+            eprintln!("Secret (base32): {totp_secret}");
+            eprintln!("OTPAuth URI    : otpauth://totp/SentinelConsole:admin?secret={totp_secret}&issuer=SentinelConsole&algorithm=SHA1&digits=6&period=30");
+            eprintln!("================================================================");
+
+            (pw_phc, totp_secret)
+        }
     };
-    let totp_secret = generate_secret_base32(rng_bytes);
-
-    // Print enrollment URI once to stderr for the operator.
-    let totp = Totp::from_base32(&totp_secret)?;
-    eprintln!("=== TOTP ENROLLMENT (scan once with your authenticator app) ===");
-    eprintln!("Secret (base32): {totp_secret}");
-    eprintln!("OTPAuth URI    : otpauth://totp/SentinelConsole:admin?secret={totp_secret}&issuer=SentinelConsole&algorithm=SHA1&digits=6&period=30");
-    // Verify we can generate a code (sanity check only)
-    let _ = totp;
+    // The bootstrap store is dropped here; from_config_with_creds opens a fresh connection.
+    drop(bootstrap_store);
 
     let state = from_config_with_creds(cfg.clone(), pw_phc, totp_secret)?;
 

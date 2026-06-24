@@ -26,7 +26,11 @@ impl Store {
              CREATE TABLE IF NOT EXISTS audit (
                  id INTEGER PRIMARY KEY AUTOINCREMENT, ts_ms INTEGER NOT NULL,
                  actor TEXT NOT NULL, op TEXT NOT NULL, params TEXT NOT NULL,
-                 result TEXT NOT NULL, detail TEXT NOT NULL);",
+                 result TEXT NOT NULL, detail TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS creds (
+                 id INTEGER PRIMARY KEY CHECK (id=1),
+                 pw_phc TEXT NOT NULL,
+                 totp_secret_b32 TEXT NOT NULL);",
         )?;
         Ok(Store { conn: Mutex::new(conn) })
     }
@@ -69,6 +73,29 @@ impl Store {
         }))?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
+
+    /// Return `(pw_phc, totp_secret_b32)` from the persisted credentials row, or `None` on a
+    /// fresh database. The `creds` table enforces a single-row invariant via `CHECK (id=1)`.
+    pub fn get_creds(&self) -> Result<Option<(String, String)>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT pw_phc, totp_secret_b32 FROM creds WHERE id = 1")?;
+        let mut rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        match rows.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Persist (or replace) the single credentials row.
+    pub fn set_creds(&self, pw_phc: &str, totp_secret_b32: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO creds (id, pw_phc, totp_secret_b32) VALUES (1, ?1, ?2)",
+            rusqlite::params![pw_phc, totp_secret_b32],
+        )?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -95,6 +122,32 @@ mod tests {
         let removed = s.prune_metrics(3_000).unwrap();
         assert_eq!(removed, 1);
         assert_eq!(s.query_window("m", 0).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn creds_fresh_store_returns_none() {
+        let s = Store::open(":memory:").unwrap();
+        assert_eq!(s.get_creds().unwrap(), None);
+    }
+
+    #[test]
+    fn creds_set_then_get_roundtrips() {
+        let s = Store::open(":memory:").unwrap();
+        s.set_creds("$argon2id$v=19$m=19456,t=2,p=1$fakehash", "JBSWY3DPEHPK3PXP").unwrap();
+        let result = s.get_creds().unwrap();
+        assert_eq!(
+            result,
+            Some(("$argon2id$v=19$m=19456,t=2,p=1$fakehash".to_string(), "JBSWY3DPEHPK3PXP".to_string()))
+        );
+    }
+
+    #[test]
+    fn creds_set_twice_replaces_in_place() {
+        let s = Store::open(":memory:").unwrap();
+        s.set_creds("hash_v1", "SECRET_V1").unwrap();
+        s.set_creds("hash_v2", "SECRET_V2").unwrap();
+        let result = s.get_creds().unwrap();
+        assert_eq!(result, Some(("hash_v2".to_string(), "SECRET_V2".to_string())));
     }
 
     #[test]
