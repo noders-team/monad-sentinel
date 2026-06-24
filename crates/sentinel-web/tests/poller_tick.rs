@@ -23,4 +23,6 @@ fn tick_records_tracked_metric_into_state_and_store() {
     let names = engine.lock().unwrap().tracked_metrics().iter().map(|s| s.to_string()).collect::<Vec<_>>();
     let any = names.iter().any(|n| !store.query_window(n, 0).unwrap().is_empty());
     assert!(any, "tick must persist at least one tracked metric to the store");
+    // explicitly verify that monad_total_uptime_us persists
+    assert!(!store.query_window("monad_total_uptime_us", 0).unwrap().is_empty(), "monad_total_uptime_us must be persisted to the store");
 }

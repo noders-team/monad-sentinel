@@ -38,10 +38,10 @@ pub fn tick(
         }
     }
 
-    // Run alert evaluation: engine lock first, then read live (read-only borrow).
+    // Run alert evaluation: acquire engine first, then live (matches invariant).
     {
-        let st = live.lock().unwrap();
         let mut eng = engine.lock().unwrap();
+        let st = live.lock().unwrap();
         let _ = run_once(&mut eng, &st, &snap, now_ms, notifier);
     }
 }
