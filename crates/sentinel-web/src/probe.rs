@@ -48,3 +48,41 @@ impl LogReader for JournalReader {
         }
     }
 }
+
+/// Extract the `Candidate:` version from `apt-cache policy <pkg>` output.
+pub fn parse_apt_candidate(text: &str) -> Option<String> {
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("Candidate:") {
+            let v = rest.trim();
+            if v.is_empty() || v == "(none)" {
+                return None;
+            }
+            return Some(v.to_string());
+        }
+    }
+    None
+}
+
+pub trait CandidateProbe: Send + Sync {
+    fn candidate(&self, pkg: &str) -> Option<String>;
+}
+
+pub struct AptPolicyProbe;
+impl CandidateProbe for AptPolicyProbe {
+    fn candidate(&self, pkg: &str) -> Option<String> {
+        let out = std::process::Command::new("apt-cache").args(["policy", pkg]).output().ok()?;
+        parse_apt_candidate(&String::from_utf8_lossy(&out.stdout))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn parses_apt_candidate() {
+        let sample = "monad:\n  Installed: 0.14.5\n  Candidate: 0.14.7\n  Version table:\n";
+        assert_eq!(super::parse_apt_candidate(sample).as_deref(), Some("0.14.7"));
+        let none = "monad:\n  Installed: 0.14.5\n  Candidate: (none)\n";
+        assert_eq!(super::parse_apt_candidate(none), None);
+    }
+}

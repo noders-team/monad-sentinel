@@ -8,3 +8,4 @@ pub mod poller;
 pub mod probe;
 pub mod state;
 pub mod store;
+pub mod version;
