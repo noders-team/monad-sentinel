@@ -40,21 +40,6 @@ pub struct RollbackBody {
     pub totp: String,
 }
 
-/// Write an audit row for restart operations; logs error but does not fail the request.
-fn audit(state: &AppState, actor: &str, unit: &str, result: &str, detail: &str) {
-    let row = AuditRow {
-        ts_ms: (state.now)(),
-        actor: actor.to_string(),
-        op: "restart".to_string(),
-        params: unit.to_string(),
-        result: result.to_string(),
-        detail: detail.to_string(),
-    };
-    if let Err(e) = state.store.append_audit(&row) {
-        eprintln!("audit write error: {e:#}");
-    }
-}
-
 /// Write an audit row with a configurable op name; logs error but does not fail the request.
 fn audit_op(state: &AppState, actor: &str, op: &str, params: &str, result: &str, detail: &str) {
     let row = AuditRow {
@@ -115,52 +100,40 @@ pub async fn restart(
     jar: CookieJar,
     Json(body): Json<RestartBody>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    // 1. CSRF check: x-csrf header must match the csrf cookie value.
-    let csrf_header = headers
-        .get("x-csrf")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    let csrf_cookie = jar
-        .get("csrf")
-        .map(|c| c.value().to_string())
-        .unwrap_or_default();
-
-    if csrf_header.is_empty() || csrf_cookie.is_empty() || csrf_header != csrf_cookie {
-        audit(&state, &actor, &body.unit, "denied", "csrf mismatch");
-        return Err(StatusCode::FORBIDDEN);
+    // 1. CSRF + TOTP check (shared helper).
+    if let Err(status) = check_csrf_and_totp(&state, &headers, &jar, &body.totp) {
+        // Determine which check failed for the audit detail.
+        let csrf_header = headers
+            .get("x-csrf")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        let csrf_cookie = jar.get("csrf").map(|c| c.value().to_string()).unwrap_or_default();
+        let detail = if csrf_header.is_empty() || csrf_cookie.is_empty() || csrf_header != csrf_cookie {
+            "csrf mismatch"
+        } else {
+            "invalid totp"
+        };
+        audit_op(&state, &actor, "restart", &body.unit, "denied", detail);
+        return Err(status);
     }
 
-    // 2. TOTP check.
-    let creds = state.creds.lock().unwrap().clone();
-    let now_secs = (state.now)() / 1000;
-    let secs = if now_secs < 0 { 0u64 } else { now_secs as u64 };
-
-    let totp_ok = Totp::from_base32(&creds.totp_secret_b32)
-        .map(|t| t.check(&body.totp, secs))
-        .unwrap_or(false);
-
-    if !totp_ok {
-        audit(&state, &actor, &body.unit, "denied", "invalid totp");
-        return Err(StatusCode::FORBIDDEN);
-    }
-
-    // 3. Allowlist check.
+    // 2. Allowlist check.
     let allowed = state.cfg.allowed_units();
     if !allowed.contains(&body.unit) {
-        audit(&state, &actor, &body.unit, "denied", "unit not in allowlist");
+        audit_op(&state, &actor, "restart", &body.unit, "denied", "unit not in allowlist");
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    // 4. Execute.
+    // 3. Execute.
     let op = Op::Restart { unit: body.unit.clone() };
     match state.executor.run(&op) {
         Ok(detail) => {
-            audit(&state, &actor, &body.unit, "ok", &detail);
+            audit_op(&state, &actor, "restart", &body.unit, "ok", &detail);
             Ok(Json(json!({ "ok": true, "detail": detail })))
         }
         Err(e) => {
             let detail = format!("{e:#}");
-            audit(&state, &actor, &body.unit, "error", &detail);
+            audit_op(&state, &actor, "restart", &body.unit, "error", &detail);
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
@@ -191,7 +164,7 @@ pub async fn upgrade(
     };
 
     // 2 & 3. CSRF + TOTP (shared helper).
-    if let Err(_status) = check_csrf_and_totp(&state, &headers, &jar, &body.totp) {
+    if let Err(status) = check_csrf_and_totp(&state, &headers, &jar, &body.totp) {
         // Determine which check failed for the audit detail.
         let csrf_header = headers
             .get("x-csrf")
@@ -204,7 +177,7 @@ pub async fn upgrade(
             "invalid totp"
         };
         audit_op(&state, &actor, "upgrade", &canonical_target, "denied", detail);
-        return Err(_status);
+        return Err(status);
     }
 
     // 4. Read current version and store as rollback point.
@@ -251,7 +224,7 @@ pub async fn rollback(
     Json(body): Json<RollbackBody>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     // 1. CSRF + TOTP.
-    if let Err(_status) = check_csrf_and_totp(&state, &headers, &jar, &body.totp) {
+    if let Err(status) = check_csrf_and_totp(&state, &headers, &jar, &body.totp) {
         let csrf_header = headers
             .get("x-csrf")
             .and_then(|v| v.to_str().ok())
@@ -263,7 +236,7 @@ pub async fn rollback(
             "invalid totp"
         };
         audit_op(&state, &actor, "rollback", "", "denied", detail);
-        return Err(_status);
+        return Err(status);
     }
 
     // 2. Read rollback_point.

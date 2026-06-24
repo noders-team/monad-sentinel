@@ -247,6 +247,11 @@ async fn upgrade_wrong_totp_returns_403_executor_not_called() {
 
     // Executor must NOT be called
     assert!(exec.recorded().is_empty(), "executor must NOT be called for wrong TOTP");
+
+    // Audit row with op="upgrade" result="denied" must exist
+    let rows = state.store.list_audit(10).unwrap();
+    let denied = rows.iter().find(|r| r.op == "upgrade" && r.result == "denied");
+    assert!(denied.is_some(), "must have audit row with op=upgrade result=denied for wrong TOTP");
 }
 
 // ---- Test 4: POST /api/ops/rollback after a successful upgrade → 200; executor records Upgrade{rollback_point} ----
@@ -374,12 +379,8 @@ async fn get_upgrades_reports_current_and_candidate() {
     let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
     let val: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
 
-    // FakeVersionProbe returns "v0.14.5"; after canonicalization through ver_probe, raw value returned
+    // FakeVersionProbe returns "v0.14.5" (raw, not canonicalized — ver_probe returns it verbatim)
+    assert_eq!(val["current"].as_str(), Some("v0.14.5"), "current must be the raw value from FakeVersionProbe");
     // FakeCandidateProbe returns "0.14.7"
-    assert!(
-        val["current"].is_string() || val["current"].is_null(),
-        "current field must be present"
-    );
-    // candidate must be "0.14.7" from FakeCandidateProbe
     assert_eq!(val["candidate"].as_str(), Some("0.14.7"), "candidate must come from FakeCandidateProbe");
 }

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use crate::middleware::AuthActor;
 use crate::state::{AlertRecord, AppState};
+use crate::store::AuditRow;
 
 #[derive(Serialize)]
 pub struct ServiceStatus {
@@ -124,7 +125,7 @@ pub struct PlanBody {
 /// Requires: AuthActor + CSRF (no TOTP — non-destructive).
 /// Validates the version, then stores target and deadline in meta.
 pub async fn set_plan(
-    _actor: AuthActor,
+    AuthActor(actor): AuthActor,
     State(st): State<AppState>,
     headers: HeaderMap,
     jar: CookieJar,
@@ -141,6 +142,17 @@ pub async fn set_plan(
         .unwrap_or_default();
 
     if csrf_header.is_empty() || csrf_cookie.is_empty() || csrf_header != csrf_cookie {
+        let row = AuditRow {
+            ts_ms: (st.now)(),
+            actor: actor.clone(),
+            op: "upgrade_plan".to_string(),
+            params: body.target_version.clone(),
+            result: "denied".to_string(),
+            detail: "csrf mismatch".to_string(),
+        };
+        if let Err(e) = st.store.append_audit(&row) {
+            eprintln!("audit write error: {e:#}");
+        }
         return Err(StatusCode::FORBIDDEN);
     }
 
@@ -154,6 +166,18 @@ pub async fn set_plan(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     st.store.set_meta("upgrade_deadline", &body.deadline)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let row = AuditRow {
+        ts_ms: (st.now)(),
+        actor: actor.clone(),
+        op: "upgrade_plan".to_string(),
+        params: canonical.clone(),
+        result: "ok".to_string(),
+        detail: format!("deadline={}", body.deadline),
+    };
+    if let Err(e) = st.store.append_audit(&row) {
+        eprintln!("audit write error: {e:#}");
+    }
 
     Ok(Json(json!({ "ok": true })))
 }
