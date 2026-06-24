@@ -132,16 +132,7 @@ pub async fn set_plan(
     Json(body): Json<PlanBody>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     // CSRF check: x-csrf header must match csrf cookie.
-    let csrf_header = headers
-        .get("x-csrf")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    let csrf_cookie = jar
-        .get("csrf")
-        .map(|c| c.value().to_string())
-        .unwrap_or_default();
-
-    if csrf_header.is_empty() || csrf_cookie.is_empty() || csrf_header != csrf_cookie {
+    if super::check_csrf(&headers, &jar).is_err() {
         let row = AuditRow {
             ts_ms: (st.now)(),
             actor: actor.clone(),

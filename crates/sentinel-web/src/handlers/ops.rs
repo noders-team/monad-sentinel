@@ -55,14 +55,16 @@ fn audit_op(state: &AppState, actor: &str, op: &str, params: &str, result: &str,
     }
 }
 
-/// Shared CSRF + TOTP check. Returns `Ok(())` if both pass, or `Err(StatusCode)` on failure.
+/// Shared CSRF + TOTP check.
+/// Returns `Ok(())` if both pass, or `Err((StatusCode, reason))` on failure.
+/// The `reason` is a `&'static str` suitable for use as an audit detail.
 /// The caller is responsible for writing an audit row on failure.
 fn check_csrf_and_totp(
     state: &AppState,
     headers: &HeaderMap,
     jar: &CookieJar,
     totp_code: &str,
-) -> Result<(), StatusCode> {
+) -> Result<(), (StatusCode, &'static str)> {
     // CSRF: x-csrf header must match the csrf cookie value.
     let csrf_header = headers
         .get("x-csrf")
@@ -74,7 +76,7 @@ fn check_csrf_and_totp(
         .unwrap_or_default();
 
     if csrf_header.is_empty() || csrf_cookie.is_empty() || csrf_header != csrf_cookie {
-        return Err(StatusCode::FORBIDDEN);
+        return Err((StatusCode::FORBIDDEN, "csrf mismatch"));
     }
 
     // TOTP check.
@@ -87,7 +89,7 @@ fn check_csrf_and_totp(
         .unwrap_or(false);
 
     if !totp_ok {
-        return Err(StatusCode::FORBIDDEN);
+        return Err((StatusCode::FORBIDDEN, "invalid totp"));
     }
 
     Ok(())
@@ -101,19 +103,8 @@ pub async fn restart(
     Json(body): Json<RestartBody>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     // 1. CSRF + TOTP check (shared helper).
-    if let Err(status) = check_csrf_and_totp(&state, &headers, &jar, &body.totp) {
-        // Determine which check failed for the audit detail.
-        let csrf_header = headers
-            .get("x-csrf")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-        let csrf_cookie = jar.get("csrf").map(|c| c.value().to_string()).unwrap_or_default();
-        let detail = if csrf_header.is_empty() || csrf_cookie.is_empty() || csrf_header != csrf_cookie {
-            "csrf mismatch"
-        } else {
-            "invalid totp"
-        };
-        audit_op(&state, &actor, "restart", &body.unit, "denied", detail);
+    if let Err((status, reason)) = check_csrf_and_totp(&state, &headers, &jar, &body.totp) {
+        audit_op(&state, &actor, "restart", &body.unit, "denied", reason);
         return Err(status);
     }
 
@@ -164,35 +155,37 @@ pub async fn upgrade(
     };
 
     // 2 & 3. CSRF + TOTP (shared helper).
-    if let Err(status) = check_csrf_and_totp(&state, &headers, &jar, &body.totp) {
-        // Determine which check failed for the audit detail.
-        let csrf_header = headers
-            .get("x-csrf")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-        let csrf_cookie = jar.get("csrf").map(|c| c.value().to_string()).unwrap_or_default();
-        let detail = if csrf_header.is_empty() || csrf_cookie.is_empty() || csrf_header != csrf_cookie {
-            "csrf mismatch"
-        } else {
-            "invalid totp"
-        };
-        audit_op(&state, &actor, "upgrade", &canonical_target, "denied", detail);
+    if let Err((status, reason)) = check_csrf_and_totp(&state, &headers, &jar, &body.totp) {
+        audit_op(&state, &actor, "upgrade", &canonical_target, "denied", reason);
         return Err(status);
     }
 
-    // 4. Read current version and store as rollback point.
+    // 4. Read current version and store as rollback point — ONLY if it validates.
     //    Use the first service binary as the bft binary reference (index 0 = BFT in default cfg).
-    let bft_binary = state.cfg.services.first().map(|s| s.binary.as_str()).unwrap_or("");
-    let current_raw = state.ver_probe.version(bft_binary);
-    let rollback_point = current_raw
-        .as_deref()
-        .and_then(|v| crate::version::validate(v))
-        .unwrap_or_else(|| current_raw.unwrap_or_default());
-
-    if let Err(e) = state.store.set_meta("rollback_point", &rollback_point) {
-        let detail = format!("failed to store rollback_point: {e:#}");
-        audit_op(&state, &actor, "upgrade", &canonical_target, "error", &detail);
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    {
+        let bft_binary = state.cfg.services.first().map(|s| s.binary.as_str()).unwrap_or("");
+        let current_raw = state.ver_probe.version(bft_binary);
+        match current_raw.as_deref().and_then(crate::version::validate) {
+            Some(canon) => {
+                if let Err(e) = state.store.set_meta("rollback_point", &canon) {
+                    let detail = format!("failed to store rollback_point: {e:#}");
+                    audit_op(&state, &actor, "upgrade", &canonical_target, "error", &detail);
+                    return Err(StatusCode::INTERNAL_SERVER_ERROR);
+                }
+            }
+            None => {
+                // Do NOT store a junk value — leave rollback_point unset (or keep the prior
+                // good one) and write an audit warning so the operator can see what happened.
+                audit_op(
+                    &state,
+                    &actor,
+                    "upgrade",
+                    &canonical_target,
+                    "warn",
+                    &format!("no valid rollback point captured (current={current_raw:?})"),
+                );
+            }
+        }
     }
 
     // 5. Execute upgrade.
@@ -224,18 +217,8 @@ pub async fn rollback(
     Json(body): Json<RollbackBody>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     // 1. CSRF + TOTP.
-    if let Err(status) = check_csrf_and_totp(&state, &headers, &jar, &body.totp) {
-        let csrf_header = headers
-            .get("x-csrf")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-        let csrf_cookie = jar.get("csrf").map(|c| c.value().to_string()).unwrap_or_default();
-        let detail = if csrf_header.is_empty() || csrf_cookie.is_empty() || csrf_header != csrf_cookie {
-            "csrf mismatch"
-        } else {
-            "invalid totp"
-        };
-        audit_op(&state, &actor, "rollback", "", "denied", detail);
+    if let Err((status, reason)) = check_csrf_and_totp(&state, &headers, &jar, &body.totp) {
+        audit_op(&state, &actor, "rollback", "", "denied", reason);
         return Err(status);
     }
 

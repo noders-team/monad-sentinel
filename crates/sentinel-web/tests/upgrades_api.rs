@@ -53,6 +53,15 @@ impl VersionProbe for FakeVersionProbe {
     }
 }
 
+// ---- BadVersionProbe — returns junk / invalid that must NOT become a rollback point ----
+
+struct BadVersionProbe;
+impl VersionProbe for BadVersionProbe {
+    fn version(&self, _binary: &str) -> Option<String> {
+        Some("garbage".to_string())
+    }
+}
+
 // ---- Helpers ----
 
 fn build_app(state: AppState) -> axum::Router {
@@ -356,6 +365,98 @@ async fn set_plan_persists_target_and_deadline() {
     let val: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(val["target"].as_str(), Some("0.14.7"), "target must be stored");
     assert_eq!(val["deadline"].as_str(), Some("2026-07-01T00:00:00Z"), "deadline must be stored");
+}
+
+// ---- Test 7: upgrade with invalid current version → 200, no junk rollback_point, warn audit, 409 on rollback ----
+
+#[tokio::test]
+async fn upgrade_with_invalid_current_version_proceeds_no_junk_rollback_point() {
+    // Build state with BadVersionProbe — current version is "garbage", fails version::validate.
+    let exec = FakeExecutor::new();
+    let mut state = test_state_with_password("hunter2");
+    let fixed_now_ms = 1_700_000_000_000i64;
+    state.now = Arc::new(move || fixed_now_ms);
+    state.executor = exec.clone();
+    state.candidate_probe = Arc::new(FakeCandidateProbe);
+    state.ver_probe = Arc::new(BadVersionProbe);
+
+    let app = build_app(state.clone());
+    let (sid_val, csrf_val) = login_get_cookies(&app).await;
+    let totp = totp_code(&state);
+    let cookie_header = format!("sid={}; csrf={}", sid_val, csrf_val);
+
+    // POST upgrade — must still return 200 (junk current version must NOT block upgrade).
+    let body = serde_json::json!({
+        "target_version": "0.14.7",
+        "totp": totp.clone(),
+    })
+    .to_string();
+
+    let res = app.clone()
+        .oneshot(req_with(
+            "POST", "/api/ops/upgrade",
+            &body,
+            &[
+                ("cookie", &cookie_header),
+                ("x-csrf", &csrf_val),
+            ],
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK, "upgrade must still succeed when current version is invalid");
+
+    // Executor must have recorded Op::Upgrade{target}.
+    let calls = exec.recorded();
+    assert_eq!(calls.len(), 1);
+    assert!(
+        matches!(&calls[0], Op::Upgrade { version } if version == "0.14.7"),
+        "executor must record Upgrade{{version: 0.14.7}}, got {:?}", calls[0]
+    );
+
+    // GET /api/upgrades must show rollback_point is null/absent — NOT "garbage".
+    let get_res = app.clone()
+        .oneshot(req_with(
+            "GET", "/api/upgrades", "",
+            &[("cookie", &cookie_header)],
+        ))
+        .await
+        .unwrap();
+    assert_eq!(get_res.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(get_res.into_body(), usize::MAX).await.unwrap();
+    let val: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(
+        val["rollback_point"].is_null(),
+        "rollback_point must be null when current version was junk, got {:?}",
+        val["rollback_point"]
+    );
+
+    // Audit log must contain a row mentioning "rollback" in the detail (the warn row).
+    let rows = state.store.list_audit(20).unwrap();
+    let warn_row = rows.iter().find(|r| r.detail.contains("rollback"));
+    assert!(
+        warn_row.is_some(),
+        "must have audit row mentioning 'rollback' in detail; rows: {:?}",
+        rows.iter().map(|r| &r.detail).collect::<Vec<_>>()
+    );
+
+    // POST rollback must return 409 (no rollback point stored).
+    let rollback_body = serde_json::json!({ "totp": totp }).to_string();
+    let rollback_res = app.clone()
+        .oneshot(req_with(
+            "POST", "/api/ops/rollback",
+            &rollback_body,
+            &[
+                ("cookie", &cookie_header),
+                ("x-csrf", &csrf_val),
+            ],
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        rollback_res.status(),
+        StatusCode::CONFLICT,
+        "rollback must return 409 when no valid rollback_point was stored"
+    );
 }
 
 // ---- Test 6: GET /api/upgrades reports current and candidate from fake probes ----
