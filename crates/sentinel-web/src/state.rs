@@ -2,7 +2,7 @@ use crate::auth::session::SessionStore;
 use crate::auth::password;
 use crate::config::WebConfig;
 use crate::ops::{OpExecutor, SudoSystemctl};
-use crate::probe::{ServiceProbe, VersionProbe, LogReader, SystemctlProbe, BinaryVersionProbe, JournalReader};
+use crate::probe::{ServiceProbe, VersionProbe, LogReader, CandidateProbe, SystemctlProbe, BinaryVersionProbe, JournalReader, AptPolicyProbe};
 use crate::store::Store;
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
@@ -47,6 +47,7 @@ pub struct AppState {
     pub svc_probe: Arc<dyn ServiceProbe>,
     pub ver_probe: Arc<dyn VersionProbe>,
     pub logs: Arc<dyn LogReader>,
+    pub candidate_probe: Arc<dyn CandidateProbe>,
     /// Privileged operation executor — real SudoSystemctl in production; fake in tests.
     pub executor: Arc<dyn OpExecutor>,
 }
@@ -81,6 +82,7 @@ pub fn from_config_with_creds(
         svc_probe: Arc::new(SystemctlProbe),
         ver_probe: Arc::new(BinaryVersionProbe),
         logs: Arc::new(JournalReader),
+        candidate_probe: Arc::new(AptPolicyProbe),
         executor,
     })
 }
@@ -108,6 +110,7 @@ pub fn test_state_with_password(pw: &str) -> AppState {
         svc_probe: Arc::new(NoopServiceProbe),
         ver_probe: Arc::new(NoopVersionProbe),
         logs: Arc::new(NoopLogReader),
+        candidate_probe: Arc::new(NoopCandidateProbe),
         executor: Arc::new(NoopExecutor),
     }
 }
@@ -127,6 +130,11 @@ impl VersionProbe for NoopVersionProbe {
 struct NoopLogReader;
 impl LogReader for NoopLogReader {
     fn tail(&self, _unit: &str, _lines: usize) -> Vec<String> { vec![] }
+}
+
+struct NoopCandidateProbe;
+impl CandidateProbe for NoopCandidateProbe {
+    fn candidate(&self, _pkg: &str) -> Option<String> { None }
 }
 
 struct NoopExecutor;

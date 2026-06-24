@@ -17,5 +17,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/alerts", get(read_h::get_alerts))
         .route("/api/audit", get(read_h::get_audit))
         .route("/api/ops/restart", post(ops_h::restart))
+        .route("/api/ops/upgrade", post(ops_h::upgrade))
+        .route("/api/ops/rollback", post(ops_h::rollback))
+        .route("/api/upgrades", get(read_h::get_upgrades))
+        .route("/api/upgrades/plan", post(read_h::set_plan))
         .with_state(state)
 }

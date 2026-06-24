@@ -1,6 +1,7 @@
 use axum::extract::{Query, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
+use axum_extra::extract::CookieJar;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use crate::middleware::AuthActor;
@@ -111,4 +112,78 @@ pub async fn get_audit(
         "detail": r.detail,
     })).collect();
     Ok(Json(json!(out)))
+}
+
+#[derive(Deserialize)]
+pub struct PlanBody {
+    pub target_version: String,
+    pub deadline: String,
+}
+
+/// POST /api/upgrades/plan {target_version, deadline}
+/// Requires: AuthActor + CSRF (no TOTP — non-destructive).
+/// Validates the version, then stores target and deadline in meta.
+pub async fn set_plan(
+    _actor: AuthActor,
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    jar: CookieJar,
+    Json(body): Json<PlanBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    // CSRF check: x-csrf header must match csrf cookie.
+    let csrf_header = headers
+        .get("x-csrf")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let csrf_cookie = jar
+        .get("csrf")
+        .map(|c| c.value().to_string())
+        .unwrap_or_default();
+
+    if csrf_header.is_empty() || csrf_cookie.is_empty() || csrf_header != csrf_cookie {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    // Validate version.
+    let canonical = match crate::version::validate(&body.target_version) {
+        Some(v) => v,
+        None => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    st.store.set_meta("upgrade_target", &canonical)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    st.store.set_meta("upgrade_deadline", &body.deadline)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(json!({ "ok": true })))
+}
+
+/// GET /api/upgrades — requires auth.
+/// Returns {current, candidate, target, deadline, rollback_point}.
+pub async fn get_upgrades(
+    _actor: AuthActor,
+    State(st): State<AppState>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    // current: from ver_probe on the BFT binary (first service in cfg).
+    let bft_binary = st.cfg.services.first().map(|s| s.binary.as_str()).unwrap_or("");
+    let current = st.ver_probe.version(bft_binary);
+
+    // candidate: from candidate_probe.
+    let candidate = st.candidate_probe.candidate(&st.cfg.package);
+
+    // Rest from meta (None → JSON null).
+    let target = st.store.get_meta("upgrade_target")
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let deadline = st.store.get_meta("upgrade_deadline")
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let rollback_point = st.store.get_meta("rollback_point")
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(json!({
+        "current": current,
+        "candidate": candidate,
+        "target": target,
+        "deadline": deadline,
+        "rollback_point": rollback_point,
+    })))
 }
