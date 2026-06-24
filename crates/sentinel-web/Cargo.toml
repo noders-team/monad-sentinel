@@ -15,6 +15,7 @@ path = "src/lib.rs"
 anyhow = "1.0.102"
 argon2 = { version = "0.5.3", features = ["std"] }
 axum = "0.8.9"
+axum-extra = { version = "0.12.6", features = ["cookie"] }
 rand = "0.10.1"
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }
