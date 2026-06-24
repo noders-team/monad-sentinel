@@ -22,6 +22,8 @@ pub struct WebConfig {
     pub scrape_interval_ms: u64,
     pub metrics_url: String,
     pub dev_insecure_cookies: bool,
+    pub package: String,
+    pub upgrade_script: String,
     pub services: Vec<ServiceCfg>,
 }
 
@@ -33,6 +35,8 @@ impl Default for WebConfig {
             scrape_interval_ms: 5000,
             metrics_url: "http://localhost:8889/metrics".to_string(),
             dev_insecure_cookies: false,
+            package: "monad".to_string(),
+            upgrade_script: "/usr/local/bin/monad-upgrade.sh".to_string(),
             services: vec![
                 ServiceCfg { name: "BFT".into(), unit: "monad-bft.service".into(),
                     binary: "/usr/local/bin/monad-node".into(), kind: ServiceKind::Bft,
@@ -78,5 +82,12 @@ mod tests {
     fn override_listen_addr() {
         let c = WebConfig::from_toml("listen_addr = \"127.0.0.1:9000\"").expect("parse");
         assert_eq!(c.listen_addr, "127.0.0.1:9000");
+    }
+
+    #[test]
+    fn upgrade_defaults() {
+        let c = WebConfig::from_toml("").expect("parse");
+        assert_eq!(c.package, "monad");
+        assert_eq!(c.upgrade_script, "/usr/local/bin/monad-upgrade.sh");
     }
 }

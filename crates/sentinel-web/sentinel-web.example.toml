@@ -6,6 +6,10 @@ scrape_interval_ms = 5000
 metrics_url = "http://localhost:8889/metrics"
 dev_insecure_cookies = false     # true ONLY for plain-localhost dev (drops Secure flag)
 
+# Phase-2 upgrades: single apt package + operator-installed wrapper script (see deploy/monad-upgrade.sh)
+package = "monad"
+upgrade_script = "/usr/local/bin/monad-upgrade.sh"
+
 [[services]]
 name = "BFT"
 unit = "monad-bft.service"
