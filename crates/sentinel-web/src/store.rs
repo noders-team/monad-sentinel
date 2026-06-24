@@ -30,7 +30,8 @@ impl Store {
              CREATE TABLE IF NOT EXISTS creds (
                  id INTEGER PRIMARY KEY CHECK (id=1),
                  pw_phc TEXT NOT NULL,
-                 totp_secret_b32 TEXT NOT NULL);",
+                 totp_secret_b32 TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
         )?;
         Ok(Store { conn: Mutex::new(conn) })
     }
@@ -95,6 +96,23 @@ impl Store {
             rusqlite::params![pw_phc, totp_secret_b32],
         )?;
         Ok(())
+    }
+
+    pub fn set_meta(&self, key: &str, value: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)",
+            rusqlite::params![key, value])?;
+        Ok(())
+    }
+
+    pub fn get_meta(&self, key: &str) -> Result<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT value FROM meta WHERE key = ?1")?;
+        let mut rows = stmt.query(rusqlite::params![key])?;
+        match rows.next()? {
+            Some(r) => Ok(Some(r.get(0)?)),
+            None => Ok(None),
+        }
     }
 }
 
@@ -161,5 +179,15 @@ mod tests {
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].ts_ms, 2);
         assert_eq!(rows[0].result, "error");
+    }
+
+    #[test]
+    fn meta_roundtrip_and_missing() {
+        let s = Store::open(":memory:").unwrap();
+        assert_eq!(s.get_meta("rollback_point").unwrap(), None);
+        s.set_meta("rollback_point", "0.14.5").unwrap();
+        assert_eq!(s.get_meta("rollback_point").unwrap().as_deref(), Some("0.14.5"));
+        s.set_meta("rollback_point", "0.14.7").unwrap();
+        assert_eq!(s.get_meta("rollback_point").unwrap().as_deref(), Some("0.14.7"));
     }
 }
