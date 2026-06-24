@@ -31,6 +31,7 @@ impl OpExecutor for FakeExecutor {
         }
         match op {
             Op::Restart { unit } => Ok(format!("restarted {unit}")),
+            Op::Upgrade { version } => Ok(format!("upgraded to {version}")),
         }
     }
 }

@@ -62,7 +62,7 @@ pub fn from_config_with_creds(
 ) -> anyhow::Result<AppState> {
     let store = Store::open(&cfg.db_path)?;
     let engine = sentinel_agent::rules::Engine::from_toml(DEFAULT_RULES_TOML)?;
-    let executor = Arc::new(SudoSystemctl { allowed: cfg.allowed_units() });
+    let executor = Arc::new(SudoSystemctl { allowed: cfg.allowed_units(), upgrade_script: cfg.upgrade_script.clone() });
     Ok(AppState {
         sessions: Arc::new(SessionStore::new()),
         creds: Arc::new(Mutex::new(Creds { pw_phc, totp_secret_b32 })),
