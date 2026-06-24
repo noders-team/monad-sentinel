@@ -11,3 +11,4 @@
 # than /usr/bin/systemctl (e.g. /bin/systemctl on some Debian/Ubuntu layouts), the operator
 # must update both this sudoers rule and confirm that `which systemctl` matches.
 sentinel ALL=(root) NOPASSWD: /usr/bin/systemctl restart monad-bft.service, /usr/bin/systemctl restart monad-execution.service, /usr/bin/systemctl restart monad-rpc.service
+sentinel ALL=(root) NOPASSWD: /usr/local/bin/monad-upgrade.sh

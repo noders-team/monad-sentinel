@@ -145,3 +145,31 @@ Key points:
 | `SENTINEL_TELEGRAM_CHAT_ID` | Optional | Telegram chat/channel ID |
 
 > **Note on session security:** Phase 1 uses opaque in-memory session tokens (256-bit CSPRNG); there is no cookie-signing key. This is a deliberate deviation from the original "signed cookie" design — revisit if sessions move to a signed/stateless scheme.
+
+### Upgrades (Phase 2)
+
+`sentinel-web` can upgrade (or roll back) the `monad` apt package via a privileged wrapper script that runs as root through a dedicated sudoers entry.
+
+**Package model:** a single `monad` apt package owns all three node binaries (`monad-node`, `monad`, `monad-rpc`). The upgrade API installs an exact version of this package, re-applies an `apt-mark hold`, and restarts the three services in one atomic step. The available candidate version is discovered via `apt-cache policy monad`.
+
+**Install the wrapper script** (operator must do this on the node before upgrades are enabled):
+
+```bash
+sudo install -o root -g root -m 750 deploy/monad-upgrade.sh /usr/local/bin/monad-upgrade.sh
+```
+
+The installed path must match the `upgrade_script` field in `/etc/sentinel/sentinel-web.toml` (default: `/usr/local/bin/monad-upgrade.sh`).
+
+**Add the sudoers entry** (one additional line in `/etc/sudoers.d/sentinel`):
+
+```
+sentinel ALL=(root) NOPASSWD: /usr/local/bin/monad-upgrade.sh
+```
+
+This line is already present in `deploy/sudoers.d-sentinel` alongside the restart entries — reinstalling the file from that source covers both.
+
+**Upgrade and rollback both require a fresh TOTP code** (in addition to password + CSRF). The TOTP code is consumed once per operation.
+
+**Rollback** downgrades to the version recorded in the audit log immediately before the last successful upgrade. The rollback target is a version that was previously running — it is not free-form user input.
+
+**"Latest" available version** is read from `apt-cache policy monad` (the `Candidate:` line). The Console exposes this via `GET /api/upgrades` alongside the currently installed version.
