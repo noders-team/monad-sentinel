@@ -4,5 +4,6 @@ pub mod config;
 pub mod handlers;
 pub mod middleware;
 pub mod poller;
+pub mod probe;
 pub mod state;
 pub mod store;
