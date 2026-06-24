@@ -12,6 +12,7 @@ name = "sentinel_web"
 path = "src/lib.rs"
 
 [dependencies]
+sentinel-agent = { path = "../sentinel-agent" }
 anyhow = "1.0.102"
 argon2 = { version = "0.5.3", features = ["std"] }
 axum = "0.8.9"

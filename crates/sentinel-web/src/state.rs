@@ -27,13 +27,20 @@ pub struct AppState {
     pub creds: Arc<Mutex<Creds>>,
     pub login_throttle: Arc<Mutex<Throttle>>,
     pub now: NowFn,
+    /// In-memory time series for alert evaluation.
+    pub live: Arc<Mutex<sentinel_agent::state::State>>,
+    /// Alert rule engine (carries firing state between ticks).
+    pub engine: Arc<Mutex<sentinel_agent::rules::Engine>>,
 }
+
+const DEFAULT_RULES_TOML: &str = include_str!("../../sentinel-agent/rules/default.toml");
 
 /// Construct a real AppState from config and an env-supplied password.
 /// `SENTINEL_ADMIN_PASSWORD` must be set. Full bootstrap (TOTP, etc.) is done in Task 8.
 pub fn from_config(cfg: WebConfig, admin_pw: &str) -> anyhow::Result<AppState> {
     let pw_phc = password::hash(admin_pw)?;
     let store = Store::open(&cfg.db_path)?;
+    let engine = sentinel_agent::rules::Engine::from_toml(DEFAULT_RULES_TOML)?;
     Ok(AppState {
         sessions: Arc::new(SessionStore::new()),
         creds: Arc::new(Mutex::new(Creds {
@@ -49,6 +56,8 @@ pub fn from_config(cfg: WebConfig, admin_pw: &str) -> anyhow::Result<AppState> {
                 .unwrap_or_default()
                 .as_millis() as i64
         }),
+        live: Arc::new(Mutex::new(sentinel_agent::state::State::new())),
+        engine: Arc::new(Mutex::new(engine)),
     })
 }
 
@@ -57,6 +66,7 @@ pub fn from_config(cfg: WebConfig, admin_pw: &str) -> anyhow::Result<AppState> {
 pub fn test_state_with_password(pw: &str) -> AppState {
     let cfg = WebConfig::default();
     let store = Store::open(":memory:").unwrap();
+    let engine = sentinel_agent::rules::Engine::from_toml(DEFAULT_RULES_TOML).unwrap();
     AppState {
         cfg: Arc::new(cfg),
         store: Arc::new(store),
@@ -67,5 +77,7 @@ pub fn test_state_with_password(pw: &str) -> AppState {
         })),
         login_throttle: Arc::new(Mutex::new(Throttle::default())),
         now: Arc::new(|| 0),
+        live: Arc::new(Mutex::new(sentinel_agent::state::State::new())),
+        engine: Arc::new(Mutex::new(engine)),
     }
 }
