@@ -4,4 +4,6 @@ metrics_url = "http://localhost:8889/metrics"
 scrape_interval_ms = 5000
 rules_path = "rules/default.toml"
 scrape_timeout_ms = 8000
+# JSON-RPC endpoint polled for eth_blockNumber (powers rpc_block_stall).
+rpc_url = "http://localhost:8080"
 rpc_timeout_ms = 8000
