@@ -4,7 +4,7 @@ async fn main() -> anyhow::Result<()> {
     let addr = cfg.listen_addr.clone();
 
     let admin_pw = std::env::var("SENTINEL_ADMIN_PASSWORD")
-        .unwrap_or_else(|_| "changeme".to_string());
+        .map_err(|_| anyhow::anyhow!("SENTINEL_ADMIN_PASSWORD must be set"))?;
 
     let state = sentinel_web::state::from_config(cfg, &admin_pw)?;
     let app = sentinel_web::app::build_router(state);
