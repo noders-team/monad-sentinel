@@ -23,6 +23,11 @@ export async function apiGet<T>(path: string): Promise<T> {
 
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   const csrf = getCookie('csrf')
+  // x-csrf is intentionally omitted when no csrf cookie is present.
+  // The login POST occurs before any csrf cookie exists, so adding the header
+  // there would be a no-op at best. Privileged ops endpoints (restart, upgrade,
+  // etc.) are always called post-login, at which point the cookie is set and
+  // the backend enforces the csrf value matches.
   return handle<T>(await fetch(path, {
     method: 'POST',
     credentials: 'include',

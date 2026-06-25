@@ -7,7 +7,7 @@ const tabs = [
   { to: '/logs', label: 'Logs' },
   { to: '/alerts', label: 'Alerts' },
   { to: '/upgrades', label: 'Upgrades' },
-  { to: '/audit', label: 'Audit' },
+  { to: '/operations', label: 'Operations' },
 ]
 
 export default function AppShell() {

@@ -47,3 +47,22 @@ test('renders outlet when /api/auth/me returns user', async () => {
     expect(screen.getByTestId('protected-page')).toBeInTheDocument()
   })
 })
+
+test('does NOT redirect to /login when /api/auth/me returns 500 — shows error state instead', async () => {
+  server.use(
+    http.get('/api/auth/me', () => new HttpResponse(null, { status: 500 }))
+  )
+  renderWithProviders(
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route element={<RequireAuth />}>
+        <Route path="/" element={<ProtectedPage />} />
+      </Route>
+    </Routes>
+  )
+  await waitFor(() => {
+    expect(screen.queryByTestId('protected-page')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('login-page')).not.toBeInTheDocument()
+    expect(screen.getByText(/connection error/i)).toBeInTheDocument()
+  })
+})

@@ -28,3 +28,18 @@ test('ApiError has the right name and status', () => {
   expect(err instanceof ApiError).toBe(true)
   expect(err instanceof Error).toBe(true)
 })
+
+test('apiPost does NOT send x-csrf header when csrf cookie is absent', async () => {
+  // Clear the csrf cookie so it is absent (login scenario — cookie not yet issued)
+  document.cookie = 'csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+  let seen: string | null | undefined = undefined
+  server.use(
+    http.post('/api/auth/login', ({ request }) => {
+      seen = request.headers.get('x-csrf')
+      return HttpResponse.json({ ok: true })
+    })
+  )
+  await apiPost('/api/auth/login', { username: 'admin', password: 'secret' })
+  // Header must be absent (null), not an empty string
+  expect(seen).toBeNull()
+})

@@ -43,7 +43,7 @@ export default function App() {
               <Route path="/logs" element={<PlaceholderPage name="Logs" />} />
               <Route path="/alerts" element={<PlaceholderPage name="Alerts" />} />
               <Route path="/upgrades" element={<PlaceholderPage name="Upgrades" />} />
-              <Route path="/audit" element={<PlaceholderPage name="Audit" />} />
+              <Route path="/operations" element={<PlaceholderPage name="Operations" />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

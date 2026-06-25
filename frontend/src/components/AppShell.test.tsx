@@ -45,7 +45,7 @@ test('renders all 6 tabs', () => {
   expect(screen.getByTestId('tab-logs')).toBeInTheDocument()
   expect(screen.getByTestId('tab-alerts')).toBeInTheDocument()
   expect(screen.getByTestId('tab-upgrades')).toBeInTheDocument()
-  expect(screen.getByTestId('tab-audit')).toBeInTheDocument()
+  expect(screen.getByTestId('tab-operations')).toBeInTheDocument()
 })
 
 test('renders status bar', () => {
