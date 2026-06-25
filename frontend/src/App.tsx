@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import RequireAuth from './components/RequireAuth'
 import AppShell from './components/AppShell'
 import { Overview } from './screens/Overview'
+import { Metrics } from './screens/Metrics'
+import { Logs } from './screens/Logs'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,8 +42,8 @@ export default function App() {
             <Route element={<AppShell />}>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<Overview />} />
-              <Route path="/metrics" element={<PlaceholderPage name="Metrics" />} />
-              <Route path="/logs" element={<PlaceholderPage name="Logs" />} />
+              <Route path="/metrics" element={<Metrics />} />
+              <Route path="/logs" element={<Logs />} />
               <Route path="/alerts" element={<PlaceholderPage name="Alerts" />} />
               <Route path="/upgrades" element={<PlaceholderPage name="Upgrades" />} />
               <Route path="/operations" element={<PlaceholderPage name="Operations" />} />
