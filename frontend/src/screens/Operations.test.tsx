@@ -1,4 +1,4 @@
-import { http, HttpResponse } from 'msw'
+import { http, HttpResponse, delay } from 'msw'
 import { screen, waitFor } from '@testing-library/react'
 import { server } from '../test/mswServer'
 import { renderWithProviders } from '../test/renderWithProviders'
@@ -55,6 +55,32 @@ test('shows op, result, and detail text for each row', async () => {
     // detail
     expect(screen.getByText('restarted monad-bft')).toBeInTheDocument()
     expect(screen.getByText('invalid totp')).toBeInTheDocument()
+  })
+})
+
+test('shows loading state before data resolves', async () => {
+  server.use(
+    http.get('/api/audit', async () => {
+      await delay(200)
+      return HttpResponse.json([rowA])
+    }),
+  )
+  renderWithProviders(<Operations />)
+  // Loading text appears synchronously (before fetch resolves)
+  expect(screen.getByText('Loading…')).toBeInTheDocument()
+  // Data eventually loads
+  await waitFor(() => {
+    expect(screen.getByText('restarted monad-bft')).toBeInTheDocument()
+  })
+})
+
+test('shows error state when API returns 500', async () => {
+  server.use(
+    http.get('/api/audit', () => HttpResponse.json({ error: 'server error' }, { status: 500 })),
+  )
+  renderWithProviders(<Operations />)
+  await waitFor(() => {
+    expect(screen.getByText('Failed to load audit log')).toBeInTheDocument()
   })
 })
 

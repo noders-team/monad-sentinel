@@ -61,7 +61,7 @@ export function Alerts() {
       </h2>
       <DataTable<Alert>
         columns={columns}
-        rows={data ?? []}
+        rows={data ? [...data].sort((a, b) => b.ts_ms - a.ts_ms) : []}
         rowKey={(row) => `${row.ts_ms}-${row.rule}`}
         empty="No active alerts"
       />
