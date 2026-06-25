@@ -7,6 +7,8 @@ import { Metrics } from './screens/Metrics'
 import { Logs } from './screens/Logs'
 import { Alerts } from './screens/Alerts'
 import { Operations } from './screens/Operations'
+import { Login } from './screens/Login'
+import { Upgrades } from './screens/Upgrades'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -14,32 +16,12 @@ const queryClient = new QueryClient({
   },
 })
 
-function LoginPage() {
-  return (
-    <div data-testid="login-page" className="min-h-screen grid place-items-center bg-void text-ink">
-      <div className="w-full max-w-sm p-8 bg-surface rounded-xl border border-line">
-        <h1 className="text-2xl font-bold text-neon mb-6">Sentinel Login</h1>
-        <p className="text-ink/60 text-sm">Authentication placeholder</p>
-      </div>
-    </div>
-  )
-}
-
-function PlaceholderPage({ name }: { name: string }) {
-  return (
-    <div className="p-6">
-      <h2 className="text-xl font-semibold text-ink">{name}</h2>
-      <p className="text-ink/60 mt-2">Coming soon</p>
-    </div>
-  )
-}
-
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
+          <Route path="/login" element={<Login />} />
           <Route element={<RequireAuth />}>
             <Route element={<AppShell />}>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -47,7 +29,7 @@ export default function App() {
               <Route path="/metrics" element={<Metrics />} />
               <Route path="/logs" element={<Logs />} />
               <Route path="/alerts" element={<Alerts />} />
-              <Route path="/upgrades" element={<PlaceholderPage name="Upgrades" />} />
+              <Route path="/upgrades" element={<Upgrades />} />
               <Route path="/operations" element={<Operations />} />
             </Route>
           </Route>
