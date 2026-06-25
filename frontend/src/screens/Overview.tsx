@@ -6,10 +6,7 @@ import { StatusDot } from '../components/StatusDot'
 import { KpiTile } from '../components/KpiTile'
 import { Sparkline } from '../components/Sparkline'
 import { Toast } from '../components/Toast'
-
-// Constant node name used for the ConfirmOpModal safety check.
-// In a future iteration this could be derived from a runtime config endpoint.
-export const NODE_NAME = 'monad-sentinel-node'
+import { NODE_NAME } from '../constants'
 
 interface ModalState {
   service: Service

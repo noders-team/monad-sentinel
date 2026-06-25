@@ -3,7 +3,7 @@ import { useUpgrades, useUpgrade, useRollback, useSetPlan } from '../api/hooks'
 import { ConfirmOpModal } from '../components/ConfirmOpModal'
 import { Toast } from '../components/Toast'
 import { StaleBanner } from '../components/StaleBanner'
-import { NODE_NAME } from './Overview'
+import { NODE_NAME } from '../constants'
 
 type ModalOp = 'upgrade' | 'rollback'
 

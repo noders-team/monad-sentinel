@@ -3,7 +3,8 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { server } from '../test/mswServer'
 import { renderWithProviders } from '../test/renderWithProviders'
-import { Overview, NODE_NAME } from './Overview'
+import { Overview } from './Overview'
+import { NODE_NAME } from '../constants'
 
 const services = [
   { name: 'monad-bft', unit: 'monad-bft.service', kind: 'systemd', active: true, version: '1.0.0' },

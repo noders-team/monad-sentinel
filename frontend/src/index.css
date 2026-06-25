@@ -9,6 +9,12 @@
   --color-ok: #22c55e;
   --color-warn: #f59e0b;
   --color-danger: #ef4444;
+  /* additional tokens used by components */
+  --color-void: #0b1220;
+  --color-surface: #1e293b;
+  --color-surface-alt: #0f172a;
+  --color-line: #334155;
+  --color-neon: #22c55e;
   --font-family-mono: ui-monospace, SFMono-Regular, monospace;
 }
 

@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { server } from '../test/mswServer'
 import { renderWithProviders } from '../test/renderWithProviders'
 import { Upgrades } from './Upgrades'
-import { NODE_NAME } from './Overview'
+import { NODE_NAME } from '../constants'
 
 let capturedUpgradeBody: unknown = null
 let capturedRollbackBody: unknown = null
