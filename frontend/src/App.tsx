@@ -5,6 +5,8 @@ import AppShell from './components/AppShell'
 import { Overview } from './screens/Overview'
 import { Metrics } from './screens/Metrics'
 import { Logs } from './screens/Logs'
+import { Alerts } from './screens/Alerts'
+import { Operations } from './screens/Operations'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,9 +46,9 @@ export default function App() {
               <Route path="/dashboard" element={<Overview />} />
               <Route path="/metrics" element={<Metrics />} />
               <Route path="/logs" element={<Logs />} />
-              <Route path="/alerts" element={<PlaceholderPage name="Alerts" />} />
+              <Route path="/alerts" element={<Alerts />} />
               <Route path="/upgrades" element={<PlaceholderPage name="Upgrades" />} />
-              <Route path="/operations" element={<PlaceholderPage name="Operations" />} />
+              <Route path="/operations" element={<Operations />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
