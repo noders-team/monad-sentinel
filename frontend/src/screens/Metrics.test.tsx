@@ -1,5 +1,3 @@
-globalThis.ResizeObserver = class { observe() {}; unobserve() {}; disconnect() {} }
-
 import { http, HttpResponse } from 'msw'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -50,7 +48,7 @@ test('24h is the default active window', async () => {
   })
 })
 
-test('changing window from 24h to 7d updates the metrics query param', async () => {
+test('changing window from 24h to 7d updates the metrics query param and re-renders chart', async () => {
   renderWithProviders(<Metrics />)
 
   // Wait for initial load with 24h window
@@ -70,6 +68,9 @@ test('changing window from 24h to 7d updates the metrics query param', async () 
     const requests7d = capturedMetricRequests.filter(r => r.window === '7d')
     expect(requests7d.length).toBeGreaterThan(0)
   })
+
+  // Assert the chart re-renders for the new window
+  await screen.findByTestId('chart-Total Uptime (µs)')
 })
 
 test('shows metric chart titles', async () => {
@@ -77,4 +78,21 @@ test('shows metric chart titles', async () => {
   await waitFor(() => {
     expect(screen.getByText(/Total Uptime/i)).toBeInTheDocument()
   })
+})
+
+test('renders "No data" when metrics have empty points', async () => {
+  server.use(
+    http.get('/api/status', () => HttpResponse.json(services)),
+    http.get('/api/metrics', () => HttpResponse.json({ points: [] })),
+  )
+
+  renderWithProviders(<Metrics />)
+
+  // Assert "No data" text is displayed
+  await waitFor(() => {
+    expect(screen.getByText('No data')).toBeInTheDocument()
+  })
+
+  // Verify no crash occurred (if we reach this, component rendered safely)
+  expect(screen.getByText(/Total Uptime/i)).toBeInTheDocument()
 })

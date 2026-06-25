@@ -1,5 +1,3 @@
-globalThis.ResizeObserver = class { observe() {}; unobserve() {}; disconnect() {} }
-
 import { render, screen } from '@testing-library/react'
 import { Sparkline } from './Sparkline'
 import type { MetricsResp } from '../api/types'

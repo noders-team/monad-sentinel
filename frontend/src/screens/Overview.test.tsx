@@ -1,5 +1,3 @@
-globalThis.ResizeObserver = class { observe() {}; unobserve() {}; disconnect() {} }
-
 import { http, HttpResponse } from 'msw'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
