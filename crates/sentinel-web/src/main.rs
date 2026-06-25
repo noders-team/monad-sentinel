@@ -104,7 +104,12 @@ async fn main() -> anyhow::Result<()> {
 
     sentinel_web::poller::spawn_loop(state.clone(), notifier);
 
-    let app = sentinel_web::app::build_router(state);
+    let api_router = sentinel_web::app::build_router(state);
+    let spa = tower_http::services::ServeDir::new(&cfg.frontend_dist)
+        .fallback(tower_http::services::ServeFile::new(
+            format!("{}/index.html", cfg.frontend_dist),
+        ));
+    let app = api_router.fallback_service(spa);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     eprintln!("sentinel-web listening on http://{addr}");
     axum::serve(listener, app).await?;

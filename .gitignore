@@ -8,3 +8,7 @@
 
 # SDD scratch (kept private)
 .superpowers/
+
+# Frontend build artifacts
+frontend/node_modules
+frontend/dist

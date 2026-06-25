@@ -24,6 +24,7 @@ pub struct WebConfig {
     pub dev_insecure_cookies: bool,
     pub package: String,
     pub upgrade_script: String,
+    pub frontend_dist: String,
     pub services: Vec<ServiceCfg>,
 }
 
@@ -37,6 +38,7 @@ impl Default for WebConfig {
             dev_insecure_cookies: false,
             package: "monad".to_string(),
             upgrade_script: "/usr/local/bin/monad-upgrade.sh".to_string(),
+            frontend_dist: "frontend/dist".to_string(),
             services: vec![
                 ServiceCfg { name: "BFT".into(), unit: "monad-bft.service".into(),
                     binary: "/usr/local/bin/monad-node".into(), kind: ServiceKind::Bft,
