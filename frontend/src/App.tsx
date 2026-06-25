@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import RequireAuth from './components/RequireAuth'
 import AppShell from './components/AppShell'
+import { Overview } from './screens/Overview'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -38,7 +39,7 @@ export default function App() {
           <Route element={<RequireAuth />}>
             <Route element={<AppShell />}>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<PlaceholderPage name="Overview" />} />
+              <Route path="/dashboard" element={<Overview />} />
               <Route path="/metrics" element={<PlaceholderPage name="Metrics" />} />
               <Route path="/logs" element={<PlaceholderPage name="Logs" />} />
               <Route path="/alerts" element={<PlaceholderPage name="Alerts" />} />
