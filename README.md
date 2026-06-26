@@ -1,175 +1,233 @@
-# monad-sentinel
+# Monad Sentinel — Validator Operations Suite
 
-A lightweight, self-hostable alerting agent for Monad validator operators. Scrapes the native metrics endpoint at `:8889`, evaluates declarative rules with defaults tuned for VDP thresholds (98% uptime / 48-hour upgrade window), and sends alerts to Telegram. No Prometheus stack required — ships as a single static Rust binary.
+Self-hostable operations tooling for **Monad validator** operators, maintained by [Noders](https://github.com/noders-team) as a public good for the validator community. Apache-2.0.
 
-Maintained by Noders as a public good for the Monad validator community. Licensed under Apache-2.0.
+Sentinel has two parts that share one codebase:
+
+1. **`sentinel-agent`** — a lightweight **alerting agent**. Scrapes the node's native metrics (`:8889`), cross-checks RPC liveness (`:8080`), evaluates declarative rules tuned for VDP thresholds (98% uptime / 48-hour upgrade window), and sends Telegram alerts. No Prometheus/Grafana stack required — a single static Rust binary.
+2. **`sentinel-web`** — a **browser control plane** ("Console"). A Rust/axum service + React dashboard that shows live metrics, status, logs, alerts and the audit log, and (optionally) performs gated node operations — per-service restart and `apt` upgrade/rollback — behind password + TOTP + CSRF. VPN-only, single-tenant.
+
+> Designed for self-hosting on the validator host. Everything binds to localhost by default; reach the Console over an SSH tunnel or a private VPN (Tailscale/WireGuard) — never expose it publicly.
 
 ---
 
-## What It Does
+## Repository layout
+
+```
+.
+├── crates/
+│   ├── sentinel-agent/      # alerting library + CLI (lib `sentinel_agent`, bin `sentinel-agent`)
+│   └── sentinel-web/        # Console backend (axum) — serves the API + the built SPA
+├── frontend/                # React + TypeScript + Vite SPA (the dashboard)
+├── deploy/                  # systemd unit, sudoers allowlist, upgrade wrapper script
+└── Cargo.toml               # workspace
+```
+
+---
+
+## Part 1 — Alerting agent (`sentinel-agent`)
+
+### What it does
 
 - Scrapes the node's native OpenTelemetry metrics from `:8889`.
 - Runs an independent RPC liveness check against `eth_blockNumber` (default `:8080`).
-- Evaluates rules defined in `rules/default.toml` against a simple alert state machine.
-- Sends firing and resolved notifications to a Telegram bot.
+- Evaluates rules from `crates/sentinel-agent/rules/default.toml` against an alert state machine.
+- Sends firing and resolved notifications to a Telegram bot (with retry/backoff; the bot token is never logged).
 
-No Prometheus, Grafana, or any other external stack is needed.
-
----
-
-## Quick Start
+### Quick start
 
 ```bash
-export SENTINEL_TELEGRAM_TOKEN=...      # obtain from @BotFather
+export SENTINEL_TELEGRAM_TOKEN=...      # from @BotFather
 export SENTINEL_TELEGRAM_CHAT_ID=...
 
-cp sentinel.example.toml sentinel.toml
+cp crates/sentinel-agent/sentinel.example.toml sentinel.toml
 
-cargo run --release -- --config sentinel.toml check   # dry-run: evaluate rules once and print results
-cargo run --release -- --config sentinel.toml run     # start the alerting loop
+# dry-run: evaluate rules once and print results
+cargo run --release -p sentinel-agent -- --config sentinel.toml check
+# start the alerting loop
+cargo run --release -p sentinel-agent -- --config sentinel.toml run
 ```
 
-Rules are declared in `rules/default.toml`. Secrets must be supplied exclusively via environment variables — never hardcode them in the config file.
+Secrets are supplied exclusively via environment variables — never hardcode them in the config.
 
----
-
-## Zombie-Node Detection
+### Zombie-node detection
 
 `metrics_stale` fires when `:8889` stops updating — the otel/waltrace pipeline inside the node process has died while the process itself remains alive.
 
-`rpc_block_stall` independently monitors `eth_blockNumber` via the configured `rpc_url` (default `:8080`). It also fires when the RPC endpoint is unreachable: the agent records the last-known block height, which then stops advancing. This means a dead RPC is detected even from a cold start.
-
-Combined interpretation:
+`rpc_block_stall` independently monitors `eth_blockNumber` via the configured `rpc_url` (default `:8080`). It also fires when the RPC endpoint is unreachable: the agent records the last-known block height, which then stops advancing — so a dead RPC is detected even from a cold start.
 
 | `metrics_stale` | `rpc_block_stall` | Meaning |
-|-----------------|-------------------|---------|
+|---|---|---|
 | firing | silent | Metrics pipeline is dead; the chain is alive — restart the node. |
 | firing | firing | The node has genuinely halted. |
 
-**Clock-skew caveat:** `metrics_stale` compares the otel timestamp embedded in `:8889` output against the agent's local clock. Run the agent on the same host as the node so both share the same clock. The `max_age_ms` threshold (default 60 s) absorbs minor skew.
+**Clock-skew caveat:** `metrics_stale` compares the otel timestamp embedded in `:8889` output against the agent's local clock. Run the agent on the same host as the node. The `max_age_ms` threshold (default 60 s) absorbs minor skew.
 
-### Co-fire During a Metrics Freeze (M0.5 Behaviour)
-
-When the metrics pipeline stalls (the timestamp from `:8889` freezes), `metrics_stale` fires immediately. At the same time, `sync_stall` and `commit_stall` also fire because they read `monad_execution_ledger_block_num` and `monad_state_consensus_events_commit_block` from `:8889` — and those values are now frozen too. This co-fire is expected in M0.5.
-
-**How to distinguish the root cause:**
-
-- If `rpc_block_stall` is **silent** — the chain is alive; only the metrics pipeline is frozen — restart the node.
-- If `rpc_block_stall` is **firing** — the chain itself has stalled.
-
-Automatic co-fire suppression via a correlation engine is planned for M0.6.
-
----
-
-## Consensus Participation / Uptime
+### Consensus participation / uptime
 
 `participation_loss` fires when the node is alive and rounds are advancing, but the vote-rate has dropped below 50% of the round-rate — the validator has stopped participating in consensus and is burning VDP uptime.
 
-Key points:
-
-- This is an **early warning**, not the exact foundation uptime percentage (which is calculated per epoch).
+- An **early warning**, not the exact per-epoch foundation uptime percentage.
 - Works only on a **staked validator**; a full node produces no participation signal.
-- Suppressed by `metrics_stale`: if the metrics pipeline is frozen, the vote-rate appears falsely zero and the rule is silenced to avoid spurious alerts.
+- Suppressed by `metrics_stale`: if the metrics pipeline is frozen, the vote-rate appears falsely zero and the rule is silenced.
 
 ---
 
-## Console (control plane)
+## Part 2 — Console (`sentinel-web` + `frontend`)
 
-`sentinel-web` is a privileged HTTP control plane that lets an operator view node status, metrics, logs, alerts, and issue safe restart operations — all protected by password + TOTP + CSRF.
+A single-tenant, VPN-only web control plane over the node. The axum backend serves a JSON API under `/api/*` and the built React SPA as static files (the SPA falls back to `index.html` for client-side routes; `/api/*` always takes precedence).
+
+### Dashboard (React SPA)
+
+Dark "Mission Control" theme, top-tab navigation, polling (no streaming). Seven screens:
+
+| Screen | Shows |
+|---|---|
+| **Login** | password login → session cookie |
+| **Overview** | per-service status, KPIs (participation, vote/round, peers, height), recent alerts, an upgrade banner, per-service restart |
+| **Metrics** | time-series charts with a 1h / 24h / 7d window |
+| **Logs** | journald tail per managed unit, level filter |
+| **Alerts** | active + recent Sentinel rule fires |
+| **Upgrades** | current vs candidate version, manual target/deadline, Run / Rollback |
+| **Operations** | the audit log |
 
 ### Security model
 
-- **VPN-only**: bind `sentinel-web` to `127.0.0.1` (default) or a private interface; never expose it to the public internet.
-- **Session authentication**: password login sets a `sid` (HttpOnly) session cookie.
-- **CSRF protection**: every mutating request requires the `x-csrf` header to match the `csrf` cookie value set at login.
-- **TOTP (second factor)**: every restart operation requires a current TOTP code from the enrolled authenticator app.
-- **Allowlist**: only the three managed units (`monad-bft.service`, `monad-execution.service`, `monad-rpc.service`) can be restarted. The command is always a fixed argv — no shell interpolation.
-- **Unprivileged user**: `sentinel-web` runs as the `sentinel` system user; it gains `NOPASSWD` access to `systemctl restart` for the allowlisted units only via the sudoers snippet.
-- **Audit log**: every restart attempt (including failures) is written to the SQLite audit table with actor, unit, result, and detail.
+- **VPN-only**: binds to `127.0.0.1:8088` by default; reach it via SSH tunnel or a private VPN — never the public internet.
+- **Session auth**: password login sets an `sid` (HttpOnly, SameSite=Strict) cookie carrying an opaque 256-bit CSPRNG token; sessions are server-side in memory with absolute + idle expiry.
+- **CSRF**: every mutating request must send the `x-csrf` header matching the JS-readable `csrf` cookie (double-submit) — works because the SPA is served same-origin.
+- **TOTP** second factor: every state-changing operation (restart / upgrade / rollback) requires a fresh 6-digit code, plus typing the node name in the confirm dialog.
+- **Privilege separation**: `sentinel-web` runs as an unprivileged `sentinel` user and **never builds a command from user input**. Privileged actions go through a fixed allowlisted argv (no shell), granted narrowly via sudoers.
+- **Audit log**: every privileged attempt (success and every rejection) is written to the SQLite audit table.
+- Secrets via `SENTINEL_*` env only.
 
-### Bootstrap
+### Read-only vs. full
 
-1. **Create the system user and directories:**
+The entire **read-only** dashboard (metrics, status, logs, alerts, upgrade *view*) needs **no sudo at all** — `systemctl is-active`, journald (via the `systemd-journal` group), the metrics/RPC ports, and `apt-cache policy` are all unprivileged. Operations (restart/upgrade/rollback) are the *only* thing that needs the sudoers grant. So a safe first deployment installs the service **without** the sudoers file: a fully functional dashboard with zero privileged surface. Add the sudoers allowlist later to enable the buttons.
 
-   ```bash
-   sudo useradd -r -s /usr/sbin/nologin sentinel
-   sudo mkdir -p /var/lib/sentinel /etc/sentinel
-   sudo chown sentinel:sentinel /var/lib/sentinel
-   ```
+### Upgrades
 
-2. **Add sentinel to the journal group** (required for log reads):
+A single `monad` apt package owns all three node binaries (`monad-node`, `monad`, `monad-rpc`). The upgrade op installs an exact version of this package via the privileged wrapper `deploy/monad-upgrade.sh` (`apt install monad=<VER> --allow-change-held-packages` → `apt-mark hold` → restart the three services → verify `monad-rpc -V`). The candidate version comes from `apt-cache policy monad`. Rollback re-installs the version recorded immediately before the last upgrade (not free-form input). Both require a fresh TOTP.
 
-   ```bash
-   sudo usermod -aG systemd-journal sentinel
-   ```
+---
 
-3. **Install the sudoers allowlist:**
-
-   ```bash
-   sudo install -o root -g root -m 440 deploy/sudoers.d-sentinel /etc/sudoers.d/sentinel
-   sudo visudo -c   # validate syntax
-   ```
-
-4. **Write the environment file** (never commit secrets):
-
-   ```bash
-   sudo tee /etc/sentinel/sentinel-web.env <<'EOF'
-   SENTINEL_ADMIN_PASSWORD=<strong-random-password>
-   # Optional: Telegram alert forwarding
-   # SENTINEL_TELEGRAM_TOKEN=...
-   # SENTINEL_TELEGRAM_CHAT_ID=...
-   EOF
-   sudo chmod 600 /etc/sentinel/sentinel-web.env
-   sudo chown sentinel:sentinel /etc/sentinel/sentinel-web.env
-   ```
-
-5. **Write the config file** (`/etc/sentinel/sentinel-web.toml`) — see `WebConfig` defaults for all fields.
-
-6. **Copy the binary and install the systemd unit:**
-
-   ```bash
-   sudo install -o root -g root -m 755 target/release/sentinel-web /usr/local/bin/
-   sudo install -o root -g root -m 644 deploy/sentinel-web.service /etc/systemd/system/
-   sudo systemctl daemon-reload
-   sudo systemctl enable --now sentinel-web
-   ```
-
-7. **Enroll your TOTP authenticator**: on first start, `sentinel-web` generates a TOTP secret, persists it in the SQLite DB (`creds` table), and prints a `otpauth://` enrollment URI to stderr. Scan it once with your authenticator app (Google Authenticator, Aegis, etc.). On subsequent starts the stored secret is reused — no re-enrollment needed. To reset enrollment, delete (or move) the DB file; the next start will generate and print a new URI.
-
-### Environment variables
-
-| Variable | Required | Description |
-|---|---|---|
-| `SENTINEL_ADMIN_PASSWORD` | Yes | Password for the `admin` account |
-| `SENTINEL_TELEGRAM_TOKEN` | Optional | Telegram bot token for alert forwarding |
-| `SENTINEL_TELEGRAM_CHAT_ID` | Optional | Telegram chat/channel ID |
-
-> **Note on session security:** Phase 1 uses opaque in-memory session tokens (256-bit CSPRNG); there is no cookie-signing key. This is a deliberate deviation from the original "signed cookie" design — revisit if sessions move to a signed/stateless scheme.
-
-### Upgrades (Phase 2)
-
-`sentinel-web` can upgrade (or roll back) the `monad` apt package via a privileged wrapper script that runs as root through a dedicated sudoers entry.
-
-**Package model:** a single `monad` apt package owns all three node binaries (`monad-node`, `monad`, `monad-rpc`). The upgrade API installs an exact version of this package, re-applies an `apt-mark hold`, and restarts the three services in one atomic step. The available candidate version is discovered via `apt-cache policy monad`.
-
-**Install the wrapper script** (operator must do this on the node before upgrades are enabled):
+## Building
 
 ```bash
-sudo install -o root -g root -m 750 deploy/monad-upgrade.sh /usr/local/bin/monad-upgrade.sh
+# Backend (workspace)
+cargo build --release -p sentinel-web        # Console binary
+cargo test  --workspace                      # full Rust test suite
+
+# Frontend (served by sentinel-web)
+cd frontend
+npm install
+npm run build                                # → frontend/dist
+npm run test                                 # Vitest + RTL
 ```
 
-The installed path must match the `upgrade_script` field in `/etc/sentinel/sentinel-web.toml` (default: `/usr/local/bin/monad-upgrade.sh`).
+**Cross-compiling the deploy binary** (e.g. from macOS/ARM to the validator's Linux x86-64). The project produces a fully static binary, so the cleanest path is [`cargo-zigbuild`](https://github.com/rust-cross/cargo-zigbuild):
 
-**Add the sudoers entry** (one additional line in `/etc/sudoers.d/sentinel`):
-
+```bash
+brew install zig
+rustup target add x86_64-unknown-linux-musl
+cargo install cargo-zigbuild
+cargo zigbuild --release --target x86_64-unknown-linux-musl -p sentinel-web
+# → target/x86_64-unknown-linux-musl/release/sentinel-web  (static, scp-and-run)
 ```
-sentinel ALL=(root) NOPASSWD: /usr/local/bin/monad-upgrade.sh
+
+---
+
+## Deploying the Console
+
+Build the binary + `frontend/dist`, copy them to the node, then install the service. Artifacts live in `deploy/`.
+
+```bash
+# 1. system user (no login) + journal read access
+sudo useradd -r -s /usr/sbin/nologin -d /opt/sentinel sentinel
+sudo usermod -aG systemd-journal sentinel
+sudo mkdir -p /var/lib/sentinel /etc/sentinel /opt/sentinel/frontend
+sudo chown -R sentinel:sentinel /var/lib/sentinel /opt/sentinel
+
+# 2. binary + SPA bundle
+sudo install -o root -g root -m 755 sentinel-web /usr/local/bin/sentinel-web
+sudo tar -xzf frontend-dist.tgz -C /opt/sentinel/frontend     # → /opt/sentinel/frontend/dist
+
+# 3. config (only the overrides; everything else defaults to the node's real layout)
+sudo tee /etc/sentinel/sentinel-web.toml >/dev/null <<'EOF'
+db_path = "/var/lib/sentinel/sentinel-web.sqlite"
+frontend_dist = "/opt/sentinel/frontend/dist"
+EOF
+
+# 4. secrets (env file; systemd reads it as root before dropping privileges)
+sudo tee /etc/sentinel/sentinel-web.env >/dev/null <<'EOF'
+SENTINEL_ADMIN_PASSWORD=<strong-random-password>
+# Optional Telegram alert forwarding:
+# SENTINEL_TELEGRAM_TOKEN=...
+# SENTINEL_TELEGRAM_CHAT_ID=...
+EOF
+sudo chmod 600 /etc/sentinel/sentinel-web.env
+
+# 5. systemd unit, enable + start
+sudo install -o root -g root -m 644 deploy/sentinel-web.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now sentinel-web
+
+# 6. first start prints the TOTP enrollment URI — read it once:
+sudo journalctl -u sentinel-web | grep otpauth
 ```
 
-This line is already present in `deploy/sudoers.d-sentinel` alongside the restart entries — reinstalling the file from that source covers both.
+> Steps 1–6 give the **read-only** deployment (no sudoers). To enable operations, additionally install `deploy/sudoers.d-sentinel` (and, for upgrades, `deploy/monad-upgrade.sh`):
+> ```bash
+> sudo install -o root -g root -m 440 deploy/sudoers.d-sentinel /etc/sudoers.d/sentinel && sudo visudo -c
+> sudo install -o root -g root -m 750 deploy/monad-upgrade.sh /usr/local/bin/monad-upgrade.sh
+> ```
 
-**Upgrade and rollback both require a fresh TOTP code** (in addition to password + CSRF). The TOTP code is consumed once per operation.
+**Access** (the service binds to `127.0.0.1:8088`):
 
-**Rollback** downgrades to the version recorded in the audit log immediately before the last successful upgrade. The rollback target is a version that was previously running — it is not free-form user input.
+```bash
+ssh -L 8088:localhost:8088 user@validator-host    # then open http://localhost:8088
+```
 
-**"Latest" available version** is read from `apt-cache policy monad` (the `Candidate:` line). The Console exposes this via `GET /api/upgrades` alongside the currently installed version.
+Log in with `admin` + the password from the env file. (TOTP is requested only for operations, not for viewing.)
+
+**TOTP enrollment:** on first start, `sentinel-web` generates a TOTP secret, persists it in the SQLite DB (`creds` table), and prints an `otpauth://` URI to the journal. Scan it once. On later starts the stored secret is reused — no re-enrollment. To reset, delete the DB file and restart.
+
+### Configuration & environment
+
+`sentinel-web.toml` (all fields have sensible defaults matching a standard Monad host):
+
+| Key | Default | Notes |
+|---|---|---|
+| `listen_addr` | `127.0.0.1:8088` | localhost only; reach via tunnel/VPN |
+| `db_path` | `sentinel-web.sqlite` | metric history + audit + creds |
+| `frontend_dist` | `frontend/dist` | the built SPA to serve |
+| `metrics_url` | `http://localhost:8889/metrics` | node otel metrics |
+| `rpc_url` | `http://localhost:8080` | JSON-RPC for `rpc_block_stall` |
+| `scrape_interval_ms` | `5000` | |
+| `package` | `monad` | apt package for upgrades |
+| `upgrade_script` | `/usr/local/bin/monad-upgrade.sh` | privileged wrapper |
+| `services` | bft / execution / rpc | managed units (allowlist source of truth) |
+
+| Env var | Required | Description |
+|---|---|---|
+| `SENTINEL_ADMIN_PASSWORD` | first run only | bootstraps the `admin` password (then persisted, hashed) |
+| `SENTINEL_TELEGRAM_TOKEN` / `SENTINEL_TELEGRAM_CHAT_ID` | optional | Telegram alert forwarding |
+
+### Managing / removing
+
+```bash
+sudo systemctl status|restart|stop sentinel-web
+sudo journalctl -u sentinel-web -f
+
+# full uninstall (reversible)
+sudo systemctl disable --now sentinel-web
+sudo rm /etc/systemd/system/sentinel-web.service /usr/local/bin/sentinel-web
+sudo rm -rf /etc/sentinel /opt/sentinel /var/lib/sentinel
+sudo userdel sentinel
+```
+
+---
+
+## License
+
+Apache-2.0. © Noders.
