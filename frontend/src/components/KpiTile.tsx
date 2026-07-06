@@ -6,15 +6,15 @@ interface KpiTileProps {
 
 export function KpiTile({ label, value, subLabel }: KpiTileProps) {
   return (
-    <div className="bg-surface border border-line rounded-xl p-4 flex flex-col gap-1">
-      <span className="text-xs text-ink/60 uppercase tracking-wider">{label}</span>
+    <div className="bg-panel border border-line rounded-[10px] px-[13px] py-2.5 flex flex-col gap-1">
+      <span className="eyebrow">{label}</span>
       {value !== undefined ? (
-        <span className="text-2xl font-bold text-ink font-mono">{value}</span>
+        <span className="text-[17px] font-semibold text-ink font-mono leading-none">{value}</span>
       ) : (
-        <span data-testid="kpi-loading" className="text-2xl font-bold text-ink/30">—</span>
+        <span data-testid="kpi-loading" className="text-[17px] font-semibold text-mut/40 font-mono leading-none">—</span>
       )}
       {subLabel && (
-        <span className="text-xs text-ink/40">{subLabel}</span>
+        <span className="text-[11px] text-mut">{subLabel}</span>
       )}
     </div>
   )

@@ -25,7 +25,7 @@ test('shows invalid credentials on 401', async () => {
 
   await userEvent.type(screen.getByLabelText(/username/i), 'admin')
   await userEvent.type(screen.getByLabelText(/password/i), 'wrongpassword')
-  await userEvent.click(screen.getByRole('button', { name: /login/i }))
+  await userEvent.click(screen.getByRole('button', { name: /sign in/i }))
 
   await waitFor(() => {
     expect(screen.getByText(/invalid credentials/i)).toBeInTheDocument()
@@ -43,7 +43,7 @@ test('navigates to / on successful login', async () => {
 
   await userEvent.type(screen.getByLabelText(/username/i), 'admin')
   await userEvent.type(screen.getByLabelText(/password/i), 'correctpassword')
-  await userEvent.click(screen.getByRole('button', { name: /login/i }))
+  await userEvent.click(screen.getByRole('button', { name: /sign in/i }))
 
   await waitFor(() => {
     expect(screen.getByText('dashboard-home')).toBeInTheDocument()

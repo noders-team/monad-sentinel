@@ -1,22 +1,46 @@
 @import "tailwindcss";
 
+/* IBM Plex, self-hosted via @fontsource — no external CDN, so the strict
+   same-origin CSP shipped by sentinel-web keeps working offline. */
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-sans/700.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
+
 @theme {
-  --color-bg: #0f172a;
-  --color-panel: #1e293b;
-  --color-edge: #334155;
-  --color-ink: #e2e8f0;
-  --color-muted: #64748b;
-  --color-ok: #22c55e;
-  --color-warn: #f59e0b;
-  --color-danger: #ef4444;
-  /* additional tokens used by components */
-  --color-void: #0b1220;
-  --color-surface: #1e293b;
-  --color-surface-alt: #0f172a;
-  --color-line: #334155;
-  --color-neon: #22c55e;
-  --font-family-mono: ui-monospace, SFMono-Regular, monospace;
+  --color-bg: #FBFAF9;        /* page background (Monad off-white) */
+  --color-panel: #FFFFFF;     /* cards / tables / header */
+  --color-panel2: #F3F1FB;    /* nested tiles, progress track, disabled btn */
+  --color-line: #E5E1F2;      /* all borders & dividers */
+  --color-ink: #1C1533;       /* primary text */
+  --color-mut: #6E6890;       /* secondary text, labels */
+  --color-acc: #836EF9;       /* Monad purple — primary buttons, active tab */
+  --color-acc-ink: #5A3FE8;   /* purple text on light (links, rule names) */
+  --color-acc-soft: rgba(131, 110, 249, 0.10); /* purple tint fills */
+  --color-ok: #0E9F6E;        /* success */
+  --color-warn: #C8821A;      /* warning / 48h window */
+  --color-dgr: #D64545;       /* critical / errors */
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 }
 
-:root { color-scheme: dark; }
-body { background-color: #0f172a; color: #e2e8f0; margin: 0; }
+:root { color-scheme: light; }
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+
+/* Uppercase micro-label used across cards/section headers. */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-mut);
+}

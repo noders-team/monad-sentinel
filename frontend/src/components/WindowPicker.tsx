@@ -9,7 +9,7 @@ const WINDOWS: Window[] = ['1h', '24h', '7d']
 
 export function WindowPicker({ value, onChange }: WindowPickerProps) {
   return (
-    <div className="inline-flex rounded-lg border border-line overflow-hidden" role="group" aria-label="Time window">
+    <div className="inline-flex rounded-full border border-line overflow-hidden" role="group" aria-label="Time window">
       {WINDOWS.map(w => (
         <button
           key={w}
@@ -17,10 +17,10 @@ export function WindowPicker({ value, onChange }: WindowPickerProps) {
           aria-pressed={value === w}
           onClick={() => onChange(w)}
           className={[
-            'px-3 py-1.5 text-sm font-medium transition-colors',
+            'px-3 py-[5px] text-[11px] font-semibold whitespace-nowrap transition-colors',
             value === w
-              ? 'bg-neon/20 text-neon border-neon/40'
-              : 'text-ink/60 hover:text-ink hover:bg-surface',
+              ? 'bg-acc-soft text-acc-ink'
+              : 'text-mut hover:text-acc-ink',
           ].join(' ')}
         >
           {w}

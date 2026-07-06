@@ -3,40 +3,35 @@ import type { AuditRow } from '../api/types'
 import { DataTable } from '../components/DataTable'
 import type { Column } from '../components/DataTable'
 
-function resultClassName(result: string): string {
-  if (result === 'ok') return 'text-ok font-medium'
-  if (result === 'denied' || result === 'error') return 'text-danger font-medium'
-  return 'text-warn font-medium'
+function resultClass(result: string): string {
+  if (result === 'ok') return 'text-ok font-semibold'
+  if (result === 'denied' || result === 'error') return 'text-dgr font-semibold'
+  return 'text-warn font-semibold'
 }
 
 const columns: Column<AuditRow>[] = [
   {
     key: 'ts_ms',
-    header: 'Time',
+    header: 'When',
     render: (row) => (
-      <span className="text-muted font-mono text-xs whitespace-nowrap">
-        {new Date(row.ts_ms).toLocaleString()}
-      </span>
+      <span className="text-mut font-mono text-[11.5px] whitespace-nowrap">{new Date(row.ts_ms).toLocaleString()}</span>
     ),
   },
   {
     key: 'actor',
     header: 'Actor',
-    render: (row) => <span className="font-mono text-xs">{row.actor}</span>,
+    render: (row) => <span className="font-mono text-[11.5px]">{row.actor}</span>,
   },
   {
     key: 'op',
-    header: 'Op',
-    render: (row) => <span className="font-mono text-xs">{row.op}</span>,
+    header: 'Operation',
+    render: (row) => <span className="font-mono text-[11.5px] text-acc-ink">{row.op}</span>,
   },
   {
     key: 'result',
     header: 'Result',
     render: (row) => (
-      <span
-        className={resultClassName(row.result)}
-        data-result={row.result}
-      >
+      <span className={`font-mono text-[11.5px] ${resultClass(row.result)}`} data-result={row.result}>
         {row.result}
       </span>
     ),
@@ -44,32 +39,24 @@ const columns: Column<AuditRow>[] = [
   {
     key: 'detail',
     header: 'Detail',
-    render: (row) => <span className="text-muted text-xs">{row.detail}</span>,
+    render: (row) => <span className="text-mut text-[11.5px]">{row.detail}</span>,
   },
 ]
 
 export function Operations() {
   const { data, isLoading, isError } = useAudit()
 
-  if (isLoading) {
-    return (
-      <div className="p-6 text-muted text-sm">Loading…</div>
-    )
-  }
-
-  if (isError) {
-    return (
-      <div className="p-6 text-danger text-sm">Failed to load audit log</div>
-    )
-  }
+  if (isLoading) return <div className="px-5 pt-4 text-mut text-[12.5px]">Loading…</div>
+  if (isError) return <div className="px-5 pt-4 text-dgr text-[12.5px]">Failed to load audit log</div>
 
   const sorted = data ? [...data].sort((a, b) => b.ts_ms - a.ts_ms) : []
 
   return (
-    <div className="p-6 space-y-4 text-ink">
-      <h2 className="text-sm font-semibold text-muted uppercase tracking-wider">
-        Audit Log
-      </h2>
+    <div className="px-5 pt-4 pb-8 space-y-3.5">
+      <div className="flex flex-wrap items-baseline gap-2">
+        <h1 className="text-[15px] font-semibold">Operations</h1>
+        <span className="text-[11.5px] text-mut">every privileged call · TOTP + CSRF verified server-side</span>
+      </div>
       <DataTable<AuditRow>
         columns={columns}
         rows={sorted}

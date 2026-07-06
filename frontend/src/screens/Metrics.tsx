@@ -12,13 +12,14 @@ interface TrackedSeries {
 }
 
 const SERIES: TrackedSeries[] = [
-  { name: 'monad_total_uptime_us', label: 'Total Uptime (µs)', color: '#4ade80' },
-  { name: 'monad_vote_rate', label: 'Vote Rate', color: '#60a5fa' },
-  { name: 'monad_block_height', label: 'Block Height', color: '#f59e0b' },
+  { name: 'monad_total_uptime_us', label: 'Total Uptime (µs)', color: '#0E9F6E' },
+  { name: 'monad_vote_rate', label: 'Vote Rate', color: '#836EF9' },
+  { name: 'monad_block_height', label: 'Block Height', color: '#5A3FE8' },
 ]
 
 function MetricSeries({ series, window }: { series: TrackedSeries; window: Window }) {
   const { data, isLoading, error } = useMetrics(series.name, window)
+  const last = data?.points?.at(-1)?.[1]
   return (
     <MetricChart
       title={series.label}
@@ -26,6 +27,7 @@ function MetricSeries({ series, window }: { series: TrackedSeries; window: Windo
       isLoading={isLoading}
       error={error instanceof Error ? error : null}
       color={series.color}
+      currentValue={last !== undefined ? (Number.isInteger(last) ? last.toLocaleString() : last.toFixed(3)) : undefined}
     />
   )
 }
@@ -34,12 +36,12 @@ export function Metrics() {
   const [window, setWindow] = useState<Window>('24h')
 
   return (
-    <div className="p-6 space-y-6 text-ink">
+    <div className="px-5 pt-4 pb-8 space-y-3.5">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Metrics</h1>
+        <h1 className="text-[15px] font-semibold">Metrics</h1>
         <WindowPicker value={window} onChange={setWindow} />
       </div>
-      <div className="grid gap-4 sm:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
         {SERIES.map(series => (
           <MetricSeries key={series.name} series={series} window={window} />
         ))}

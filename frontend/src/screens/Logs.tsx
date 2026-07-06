@@ -7,11 +7,13 @@ import type { Service } from '../api/types'
 const LEVEL_OPTIONS = ['', 'ERROR', 'WARN', 'INFO', 'DEBUG']
 const DEFAULT_LINES = 200
 
+const selectClass = 'bg-panel border border-line rounded px-2 py-[5px] font-mono text-[12px] text-ink focus:outline-none focus:border-acc'
+
 function LogsBody({ unit, lines, levelFilter }: { unit: string; lines: number; levelFilter: string }) {
   const { data, isLoading, error } = useLogs(unit, lines)
 
   if (isLoading) {
-    return <div className="text-ink/40 text-sm">Loading logs…</div>
+    return <div className="text-mut text-[12.5px]">Loading logs…</div>
   }
 
   if (error) {
@@ -21,7 +23,7 @@ function LogsBody({ unit, lines, levelFilter }: { unit: string; lines: number; l
         ? error.message
         : 'Failed to load logs'
     return (
-      <div role="alert" className="px-4 py-3 rounded-lg border border-red-500/40 bg-red-500/10 text-red-400 text-sm">
+      <div role="alert" className="px-[14px] py-3 rounded-[10px] border border-dgr text-dgr text-[12.5px]" style={{ background: 'rgba(214,69,69,0.08)' }}>
         {msg}
       </div>
     )
@@ -36,50 +38,46 @@ export function Logs() {
   const [levelFilter, setLevelFilter] = useState<string>('')
 
   const managedUnits: Service[] = services ?? []
-
-  // Auto-select first unit when services load
   const activeUnit = selectedUnit || managedUnits[0]?.unit || ''
 
   return (
-    <div className="p-6 space-y-4 text-ink">
-      <h1 className="text-xl font-semibold">Logs</h1>
+    <div className="px-5 pt-4 pb-8 space-y-3.5">
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="text-[15px] font-semibold flex-1">Logs</h1>
 
-      <div className="flex flex-wrap gap-3 items-center">
-        <label className="flex items-center gap-2 text-sm text-ink/70">
+        <label className="flex items-center gap-2 text-[11.5px] text-mut">
           Unit
           <select
             aria-label="Unit"
             value={activeUnit}
             onChange={e => setSelectedUnit(e.target.value)}
-            className="bg-surface border border-line rounded px-2 py-1 text-sm text-ink focus:outline-none focus:border-neon/50"
+            className={selectClass}
           >
             {managedUnits.map(svc => (
-              <option key={svc.unit} value={svc.unit}>
-                {svc.name}
-              </option>
+              <option key={svc.unit} value={svc.unit}>{svc.name}</option>
             ))}
           </select>
         </label>
 
-        <label className="flex items-center gap-2 text-sm text-ink/70">
+        <label className="flex items-center gap-2 text-[11.5px] text-mut">
           Level
           <select
             aria-label="Level filter"
             value={levelFilter}
             onChange={e => setLevelFilter(e.target.value)}
-            className="bg-surface border border-line rounded px-2 py-1 text-sm text-ink focus:outline-none focus:border-neon/50"
+            className={selectClass}
           >
             {LEVEL_OPTIONS.map(l => (
-              <option key={l} value={l}>
-                {l || 'All'}
-              </option>
+              <option key={l} value={l}>{l || 'All'}</option>
             ))}
           </select>
         </label>
+
+        <span className="font-mono text-[11px] text-mut">tail -n {DEFAULT_LINES} · poll 5s</span>
       </div>
 
       {managedUnits.length === 0 ? (
-        <div className="text-ink/40 text-sm">Loading units…</div>
+        <div className="text-mut text-[12.5px]">Loading units…</div>
       ) : (
         <LogsBody unit={activeUnit} lines={DEFAULT_LINES} levelFilter={levelFilter} />
       )}

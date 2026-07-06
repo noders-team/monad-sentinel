@@ -1,14 +1,14 @@
 import { render, screen } from '@testing-library/react'
 import { StatusDot } from './StatusDot'
 
-test('renders green dot when active', () => {
+test('renders ok dot when active', () => {
   render(<StatusDot active={true} />)
   const dot = screen.getByTestId('status-dot')
-  expect(dot).toHaveClass('bg-green-500')
+  expect(dot).toHaveClass('bg-ok')
 })
 
-test('renders red dot when inactive', () => {
+test('renders danger dot when inactive', () => {
   render(<StatusDot active={false} />)
   const dot = screen.getByTestId('status-dot')
-  expect(dot).toHaveClass('bg-red-500')
+  expect(dot).toHaveClass('bg-dgr')
 })

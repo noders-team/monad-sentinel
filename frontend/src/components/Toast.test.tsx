@@ -18,10 +18,10 @@ test('calls onDismiss when dismiss button clicked', async () => {
 
 test('applies success styling', () => {
   render(<Toast message="Done!" kind="success" onDismiss={() => {}} />)
-  expect(screen.getByTestId('toast')).toHaveClass('border-green-500')
+  expect(screen.getByTestId('toast')).toHaveClass('border-ok')
 })
 
 test('applies error styling', () => {
   render(<Toast message="Failed!" kind="error" onDismiss={() => {}} />)
-  expect(screen.getByTestId('toast')).toHaveClass('border-red-500')
+  expect(screen.getByTestId('toast')).toHaveClass('border-dgr')
 })

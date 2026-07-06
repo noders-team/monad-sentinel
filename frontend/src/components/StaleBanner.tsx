@@ -9,9 +9,10 @@ export function StaleBanner({ isError, hasData }: StaleBannerProps) {
   return (
     <div
       data-testid="stale-banner"
-      className="flex items-center gap-2 px-4 py-2 rounded-lg border border-amber-500 bg-amber-500/10 text-amber-300 text-sm"
+      className="flex items-center gap-2 px-[14px] py-2 rounded-[10px] border border-warn text-warn text-[12.5px]"
+      style={{ background: 'rgba(200,130,26,0.08)' }}
     >
-      <span>stale — retrying</span>
+      <span>Live data is stale — retrying.</span>
     </div>
   )
 }
