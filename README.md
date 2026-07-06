@@ -172,8 +172,10 @@ sudo install -o root -g root -m 644 deploy/sentinel-web.service /etc/systemd/sys
 sudo systemctl daemon-reload
 sudo systemctl enable --now sentinel-web
 
-# 6. first start prints the TOTP enrollment URI — read it once:
-sudo journalctl -u sentinel-web | grep otpauth
+# 6. first start writes the TOTP enrollment banner to an owner-only file —
+#    scan it once, then delete it (it is never printed to the journal):
+sudo cat /var/lib/sentinel/totp-enroll.txt
+sudo rm /var/lib/sentinel/totp-enroll.txt
 ```
 
 > Steps 1–6 give the **read-only** deployment (no sudoers). To enable operations, additionally install `deploy/sudoers.d-sentinel` (and, for upgrades, `deploy/monad-upgrade.sh`):
@@ -190,7 +192,7 @@ ssh -L 8088:localhost:8088 user@validator-host    # then open http://localhost:8
 
 Log in with `admin` + the password from the env file. (TOTP is requested only for operations, not for viewing.)
 
-**TOTP enrollment:** on first start, `sentinel-web` generates a TOTP secret, persists it in the SQLite DB (`creds` table), and prints an `otpauth://` URI to the journal. Scan it once. On later starts the stored secret is reused — no re-enrollment. To reset, delete the DB file and restart.
+**TOTP enrollment:** on first start, `sentinel-web` generates a TOTP secret, persists it in the SQLite DB (`creds` table), and writes the `otpauth://` URI to `totp-enroll.txt` (mode 0600) next to the DB — the secret never touches the journal. Scan it once, then delete the file. On later starts the stored secret is reused — no re-enrollment. To reset, delete the DB file and restart.
 
 ### Configuration & environment
 

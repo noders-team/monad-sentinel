@@ -34,12 +34,12 @@ async fn main() -> anyhow::Result<()> {
     //
     // On first run (no creds row in the database):
     //   • SENTINEL_ADMIN_PASSWORD must be set — its hash is persisted.
-    //   • A fresh TOTP secret is generated, persisted, and the otpauth:// URI is printed to
-    //     stderr ONCE so the operator can enroll their authenticator app.
+    //   • A fresh TOTP secret is generated, persisted, and the enrollment banner is written
+    //     ONCE to an owner-only file next to the database (never to stderr/journald).
     //
     // On subsequent starts:
     //   • Persisted credentials are loaded from the database; SENTINEL_ADMIN_PASSWORD is ignored.
-    //   • The otpauth:// URI is NOT printed again (the secret has not changed).
+    //   • The enrollment file is NOT written again (the secret has not changed).
     //   • This means a crash + Restart=on-failure does NOT invalidate the operator's 2FA enrollment.
     //
     // Password note: SENTINEL_ADMIN_PASSWORD is only consumed on first bootstrap. To change the
@@ -70,10 +70,21 @@ async fn main() -> anyhow::Result<()> {
             // Verify the secret is decodable before printing (sanity check).
             let _totp = Totp::from_base32(&totp_secret)?;
 
-            eprintln!("=== TOTP ENROLLMENT — scan ONCE with your authenticator app ===");
-            eprintln!("Secret (base32): {totp_secret}");
-            eprintln!("OTPAuth URI    : otpauth://totp/SentinelConsole:admin?secret={totp_secret}&issuer=SentinelConsole&algorithm=SHA1&digits=6&period=30");
-            eprintln!("================================================================");
+            // Write the secret to an owner-only file instead of stderr: journald
+            // retains stderr indefinitely, which would hand the second factor
+            // to anyone with journal access.
+            let enroll_path = std::path::Path::new(&cfg.db_path)
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or_else(|| std::path::Path::new("."))
+                .join("totp-enroll.txt");
+            sentinel_web::auth::totp::write_enrollment_file(&enroll_path, &totp_secret)?;
+            eprintln!("=== TOTP ENROLLMENT ===");
+            eprintln!(
+                "Enrollment secret written to {} — scan it ONCE with your authenticator app, then delete the file.",
+                enroll_path.display()
+            );
+            eprintln!("=======================");
 
             (pw_phc, totp_secret)
         }
