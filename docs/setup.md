@@ -40,6 +40,11 @@ cp sentinel.example.toml /etc/sentinel/sentinel.toml
 
 Edit `/etc/sentinel/sentinel.toml` to set your node's RPC URL and any rule overrides.
 
+The default alert rules are compiled into the binary — nothing else needs to be
+installed. To customize rules, copy `crates/sentinel-agent/rules/default.toml`
+to e.g. `/etc/sentinel/rules.toml`, edit it, and point `rules_path` at that
+absolute path in the config.
+
 ## 5. Dry-Run
 
 Verify the configuration and rule evaluation without starting the alerting loop:

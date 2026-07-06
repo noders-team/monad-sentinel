@@ -2,7 +2,10 @@
 #   SENTINEL_TELEGRAM_TOKEN, SENTINEL_TELEGRAM_CHAT_ID
 metrics_url = "http://localhost:8889/metrics"
 scrape_interval_ms = 5000
-rules_path = "rules/default.toml"
+# Alert rules are compiled into the binary; uncomment only to override them
+# with a custom rule file (use an absolute path — under systemd the working
+# directory is not the repo checkout).
+# rules_path = "/etc/sentinel/rules.toml"
 scrape_timeout_ms = 8000
 # JSON-RPC endpoint polled for eth_blockNumber (powers rpc_block_stall).
 rpc_url = "http://localhost:8080"

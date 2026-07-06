@@ -39,7 +39,7 @@ fn load(config_path: &PathBuf) -> anyhow::Result<(Config, Engine)> {
         }
     };
     let cfg = Config::from_toml(&cfg_text)?;
-    let rules_text = std::fs::read_to_string(&cfg.rules_path)?;
+    let rules_text = cfg.rules_text()?;
     let engine = Engine::from_toml(&rules_text)?;
     Ok((cfg, engine))
 }

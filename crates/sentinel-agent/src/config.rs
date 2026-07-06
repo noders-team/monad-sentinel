@@ -6,7 +6,8 @@ use anyhow::Context;
 pub struct Config {
     pub metrics_url: String,
     pub scrape_interval_ms: u64,
-    pub rules_path: String,
+    /// Optional override; when absent the rules compiled into the binary are used.
+    pub rules_path: Option<String>,
     pub rpc_url: String,
     pub scrape_timeout_ms: u64,
     pub rpc_timeout_ms: u64,
@@ -17,7 +18,7 @@ impl Default for Config {
         Self {
             metrics_url: "http://localhost:8889/metrics".to_string(),
             scrape_interval_ms: 5000,
-            rules_path: "rules/default.toml".to_string(),
+            rules_path: None,
             rpc_url: "http://localhost:8080".to_string(),
             scrape_timeout_ms: 8000,
             rpc_timeout_ms: 8000,
@@ -25,10 +26,24 @@ impl Default for Config {
     }
 }
 
+/// Default rule set compiled into the binary so a from-scratch install works
+/// without shipping rules/ alongside it (sentinel-web embeds the same file).
+pub const DEFAULT_RULES_TOML: &str = include_str!("../rules/default.toml");
+
 impl Config {
     pub fn from_toml(text: &str) -> anyhow::Result<Config> {
         let c: Config = toml::from_str(text)?;
         Ok(c)
+    }
+
+    /// Rule definitions to feed the engine: an explicitly configured file must
+    /// exist (no silent fallback), otherwise the embedded defaults are used.
+    pub fn rules_text(&self) -> anyhow::Result<String> {
+        match &self.rules_path {
+            Some(path) => std::fs::read_to_string(path)
+                .with_context(|| format!("failed to read rules file {path}")),
+            None => Ok(DEFAULT_RULES_TOML.to_string()),
+        }
     }
 }
 
@@ -77,6 +92,39 @@ mod tests {
         std::env::remove_var("SENTINEL_TELEGRAM_TOKEN");
         std::env::remove_var("SENTINEL_TELEGRAM_CHAT_ID");
         assert!(Secrets::from_env().is_err());
+    }
+
+    #[test]
+    fn rules_path_defaults_to_none() {
+        let c = Config::from_toml("").expect("parse");
+        assert!(c.rules_path.is_none());
+    }
+
+    #[test]
+    fn rules_text_falls_back_to_embedded_defaults() {
+        let c = Config::from_toml("").expect("parse");
+        let text = c.rules_text().expect("embedded rules");
+        assert!(text.contains("participation_loss"));
+    }
+
+    #[test]
+    fn rules_text_errors_on_missing_explicit_file() {
+        let c = Config::from_toml("rules_path = \"/nonexistent/sentinel-rules.toml\"")
+            .expect("parse");
+        let err = c.rules_text().expect_err("missing file must fail, not fall back");
+        assert!(err.to_string().contains("/nonexistent/sentinel-rules.toml"));
+    }
+
+    #[test]
+    fn rules_text_reads_explicit_file() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("sentinel-agent-test-rules.toml");
+        std::fs::write(&path, "# custom rules marker").expect("write tmp rules");
+        let c = Config::from_toml(&format!("rules_path = \"{}\"", path.display()))
+            .expect("parse");
+        let text = c.rules_text().expect("read explicit file");
+        assert!(text.contains("custom rules marker"));
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
