@@ -120,7 +120,11 @@ async fn main() -> anyhow::Result<()> {
         .fallback(tower_http::services::ServeFile::new(
             format!("{}/index.html", cfg.frontend_dist),
         ));
-    let app = api_router.fallback_service(spa);
+    // Re-apply the security headers at the outermost layer so the SPA
+    // fallback (added after build_router's own layer) is covered as well.
+    let app = api_router
+        .fallback_service(spa)
+        .layer(axum::middleware::from_fn(sentinel_web::app::security_headers));
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     eprintln!("sentinel-web listening on http://{addr}");
     axum::serve(listener, app).await?;
