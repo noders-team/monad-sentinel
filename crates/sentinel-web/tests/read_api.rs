@@ -200,3 +200,46 @@ async fn alerts_without_session_is_401() {
     let res = app.oneshot(req("GET", "/api/alerts", "", None)).await.unwrap();
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
+
+// ---- Clamp tests: caller-supplied sizes must be bounded server-side ----
+
+/// LogReader fake that echoes back as many lines as it was asked for,
+/// so the response length reveals what `lines` value reached the reader.
+struct CountingLogReader;
+impl LogReader for CountingLogReader {
+    fn tail(&self, _unit: &str, lines: usize) -> Vec<String> {
+        (0..lines).map(|i| format!("l{i}")).collect()
+    }
+}
+
+#[tokio::test]
+async fn logs_lines_param_is_clamped() {
+    let mut st = fake_state();
+    st.logs = Arc::new(CountingLogReader);
+    let app = sentinel_web::app::build_router(st);
+    let sid = login(&app).await;
+
+    let res = app.clone()
+        .oneshot(req("GET", "/api/logs?unit=monad-bft.service&lines=999999", "", Some(&sid)))
+        .await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let lines = json["lines"].as_array().expect("lines array");
+    assert!(
+        lines.len() <= 1000,
+        "lines must be clamped server-side, got {}",
+        lines.len()
+    );
+}
+
+#[tokio::test]
+async fn audit_limit_param_is_clamped_not_erroring() {
+    let app = sentinel_web::app::build_router(fake_state());
+    let sid = login(&app).await;
+    let res = app.clone()
+        .oneshot(req("GET", "/api/audit?limit=18446744073709551615", "", Some(&sid)))
+        .await.unwrap();
+    // A huge (even usize::MAX) limit must be accepted and clamped, not 500.
+    assert_eq!(res.status(), StatusCode::OK);
+}

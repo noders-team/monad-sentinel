@@ -34,8 +34,10 @@ impl OpExecutor for SudoSystemctl {
                     anyhow::bail!("unit not allowed: {unit}");
                 }
                 // Fixed argv — no sh -c, no string interpolation in the shell sense.
+                // Absolute systemctl path: must match deploy/sudoers.d-sentinel
+                // exactly, so no PATH/secure_path resolution ambiguity remains.
                 let out = std::process::Command::new("sudo")
-                    .args(["-n", "systemctl", "restart", unit.as_str()])
+                    .args(["-n", "/usr/bin/systemctl", "restart", unit.as_str()])
                     .output()?;
                 if !out.status.success() {
                     anyhow::bail!(

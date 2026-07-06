@@ -15,6 +15,16 @@ pub struct LoginBody {
     pub password: String,
 }
 
+/// Input caps: reject absurd credentials before they reach Argon2 — a huge
+/// password would otherwise force a full (deliberately slow) hash per attempt.
+const MAX_USERNAME_LEN: usize = 64;
+const MAX_PASSWORD_LEN: usize = 256;
+
+/// Fixed hash used to equalize login timing when the username is unknown:
+/// without it, non-"admin" usernames return instantly while the real one pays
+/// the full Argon2 cost — a username-enumeration timing oracle.
+static DUMMY_PHC: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
 /// POST /api/auth/login
 /// Validates credentials; on success sets `sid` (HttpOnly) and `csrf` cookies and
 /// returns `{"actor":"admin"}`. Returns 429 when the login rate-limit is exceeded,
@@ -25,6 +35,10 @@ pub async fn login(
     Json(body): Json<LoginBody>,
 ) -> Result<(CookieJar, Json<serde_json::Value>), StatusCode> {
     let now = (st.now)();
+
+    if body.username.len() > MAX_USERNAME_LEN || body.password.len() > MAX_PASSWORD_LEN {
+        return Err(StatusCode::BAD_REQUEST);
+    }
 
     // Rate-limit: max 5 failures per username per 5 minutes (300_000 ms)
     {
@@ -39,7 +53,17 @@ pub async fn login(
     }
 
     let creds = st.creds.lock_ok().clone();
-    let ok = body.username == "admin" && password::verify(&body.password, &creds.pw_phc);
+    let ok = if body.username == "admin" {
+        password::verify(&body.password, &creds.pw_phc)
+    } else {
+        // Burn the same Argon2 cost against a dummy hash so an unknown
+        // username is indistinguishable from a wrong password by timing.
+        let dummy = DUMMY_PHC.get_or_init(|| {
+            password::hash("sentinel-timing-equalizer").expect("hashing a fixed string cannot fail")
+        });
+        let _ = password::verify(&body.password, dummy);
+        false
+    };
 
     if !ok {
         let mut t = st.login_throttle.lock_ok();

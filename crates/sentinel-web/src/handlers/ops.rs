@@ -85,7 +85,7 @@ fn check_csrf_and_totp(
         .map(|c| c.value().to_string())
         .unwrap_or_default();
 
-    if csrf_header.is_empty() || csrf_cookie.is_empty() || csrf_header != csrf_cookie {
+    if csrf_header.is_empty() || csrf_cookie.is_empty() || !super::csrf_eq(csrf_header, &csrf_cookie) {
         return Err((StatusCode::FORBIDDEN, "csrf mismatch"));
     }
 

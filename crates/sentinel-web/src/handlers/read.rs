@@ -9,6 +9,11 @@ use crate::middleware::AuthActor;
 use crate::state::{AlertRecord, AppState};
 use crate::store::AuditRow;
 
+/// Server-side caps on caller-supplied result sizes: a single authenticated
+/// admin never needs more, and an unbounded value is needless CPU/memory spend.
+const MAX_LOG_LINES: usize = 1000;
+const MAX_AUDIT_ROWS: usize = 1000;
+
 #[derive(Serialize)]
 pub struct ServiceStatus {
     pub name: String,
@@ -76,7 +81,7 @@ pub async fn get_logs(
     if !allowed.contains(&params.unit) {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let n = params.lines.unwrap_or(100);
+    let n = params.lines.unwrap_or(100).min(MAX_LOG_LINES);
     let lines = st.logs.tail(&params.unit, n);
     Ok(Json(json!({ "lines": lines })))
 }
@@ -102,7 +107,7 @@ pub async fn get_audit(
     State(st): State<AppState>,
     Query(params): Query<AuditParams>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let limit = params.limit.unwrap_or(50);
+    let limit = params.limit.unwrap_or(50).min(MAX_AUDIT_ROWS);
     let rows = st.store.list_audit(limit)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let out: Vec<serde_json::Value> = rows.iter().map(|r| json!({

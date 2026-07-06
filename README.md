@@ -122,6 +122,7 @@ cargo test  --workspace                      # full Rust test suite
 cd frontend
 npm install
 npm run build                                # → frontend/dist
+VITE_NODE_NAME=my-validator npm run build    # brand the type-to-confirm string
 npm run test                                 # Vitest + RTL
 ```
 

@@ -79,3 +79,21 @@ async fn me_without_cookie_is_401() {
     let res = app.oneshot(req("GET", "/api/auth/me", "", None)).await.unwrap();
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn oversized_credentials_are_rejected_without_hashing() {
+    let state = test_state_with_password("hunter2");
+    let app = sentinel_web::app::build_router(state);
+
+    // 300-char password exceeds the cap → 400 (never reaches Argon2).
+    let long_pw = "x".repeat(300);
+    let body = format!("{{\"username\":\"admin\",\"password\":\"{long_pw}\"}}");
+    let res = app.clone().oneshot(req("POST", "/api/auth/login", &body, None)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+    // 100-char username exceeds the cap → 400.
+    let long_user = "u".repeat(100);
+    let body = format!("{{\"username\":\"{long_user}\",\"password\":\"pw\"}}");
+    let res = app.clone().oneshot(req("POST", "/api/auth/login", &body, None)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}

@@ -6,9 +6,9 @@
 #   sudo install -o root -g root -m 440 sudoers.d-sentinel /etc/sudoers.d/sentinel
 #   sudo visudo -c   # validate
 
-# PATH NOTE: The rule below hardcodes /usr/bin/systemctl. The executor in ops.rs runs bare
-# `sudo -n systemctl` (PATH-resolved). On distros where `systemctl` resolves to a path other
-# than /usr/bin/systemctl (e.g. /bin/systemctl on some Debian/Ubuntu layouts), the operator
-# must update both this sudoers rule and confirm that `which systemctl` matches.
+# PATH NOTE: The rule below hardcodes /usr/bin/systemctl, and the executor in ops.rs invokes
+# the same absolute path (`sudo -n /usr/bin/systemctl ...`) — the two must stay in sync. On
+# distros where systemctl lives elsewhere (e.g. /bin/systemctl on some layouts), update BOTH
+# this rule and the path in crates/sentinel-web/src/ops.rs.
 sentinel ALL=(root) NOPASSWD: /usr/bin/systemctl restart monad-bft.service, /usr/bin/systemctl restart monad-execution.service, /usr/bin/systemctl restart monad-rpc.service
 sentinel ALL=(root) NOPASSWD: /usr/local/bin/monad-upgrade.sh
