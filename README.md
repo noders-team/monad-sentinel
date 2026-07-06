@@ -96,7 +96,7 @@ Dark "Mission Control" theme, top-tab navigation, polling (no streaming). Seven 
 - **VPN-only**: binds to `127.0.0.1:8088` by default; reach it via SSH tunnel or a private VPN — never the public internet.
 - **Session auth**: password login sets an `sid` (HttpOnly, SameSite=Strict) cookie carrying an opaque 256-bit CSPRNG token; sessions are server-side in memory with absolute + idle expiry.
 - **CSRF**: every mutating request must send the `x-csrf` header matching the JS-readable `csrf` cookie (double-submit) — works because the SPA is served same-origin.
-- **TOTP** second factor: every state-changing operation (restart / upgrade / rollback) requires a fresh 6-digit code, plus typing the node name in the confirm dialog.
+- **TOTP** second factor: every state-changing operation (restart / upgrade / rollback) requires a fresh 6-digit code, plus typing the node name in the confirm dialog. Accepted codes are single-use (replays are rejected and audited), and 5 failed codes within 5 minutes lock the ops endpoints for the rest of the window.
 - **Privilege separation**: `sentinel-web` runs as an unprivileged `sentinel` user and **never builds a command from user input**. Privileged actions go through a fixed allowlisted argv (no shell), granted narrowly via sudoers.
 - **Audit log**: every privileged attempt (success and every rejection) is written to the SQLite audit table.
 - Secrets via `SENTINEL_*` env only.

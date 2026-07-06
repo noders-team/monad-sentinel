@@ -22,6 +22,17 @@ pub struct Throttle {
     pub fails: HashMap<String, (u32, i64)>,
 }
 
+/// Anti-abuse state for the TOTP check on privileged ops (single-tenant, so
+/// one global counter): failed-attempt lockout + accepted-code replay denial.
+#[derive(Default)]
+pub struct TotpGuard {
+    /// (fail_count, window_start_ms)
+    pub fails: (u32, i64),
+    /// Codes accepted recently: (code, accepted_at_ms). Pruned past the TOTP
+    /// validity window, so this never outgrows a handful of entries.
+    pub used: Vec<(String, i64)>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct AlertRecord {
     pub ts_ms: i64,
@@ -36,6 +47,7 @@ pub struct AppState {
     pub sessions: Arc<SessionStore>,
     pub creds: Arc<Mutex<Creds>>,
     pub login_throttle: Arc<Mutex<Throttle>>,
+    pub totp_guard: Arc<Mutex<TotpGuard>>,
     pub now: NowFn,
     /// In-memory time series for alert evaluation.
     pub live: Arc<Mutex<sentinel_agent::state::State>>,
@@ -70,6 +82,7 @@ pub fn from_config_with_creds(
         cfg: Arc::new(cfg),
         store: Arc::new(store),
         login_throttle: Arc::new(Mutex::new(Throttle::default())),
+        totp_guard: Arc::new(Mutex::new(TotpGuard::default())),
         now: Arc::new(|| {
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -103,6 +116,7 @@ pub fn test_state_with_password(pw: &str) -> AppState {
             totp_secret_b32: crate::auth::totp::generate_secret_base32([7u8; 20]),
         })),
         login_throttle: Arc::new(Mutex::new(Throttle::default())),
+        totp_guard: Arc::new(Mutex::new(TotpGuard::default())),
         now: Arc::new(|| 0),
         live: Arc::new(Mutex::new(sentinel_agent::state::State::new())),
         engine: Arc::new(Mutex::new(engine)),

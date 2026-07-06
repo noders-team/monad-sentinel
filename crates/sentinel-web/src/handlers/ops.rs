@@ -7,9 +7,11 @@
 ///   1. Version validation (upgrade only): target_version must pass `version::validate`.
 ///   2. CSRF check: x-csrf header must match csrf cookie value.
 ///   3. Session validity is already guaranteed by AuthActor extractor (returns 401 if invalid).
-///   4. TOTP check: code must be valid for the current time step.
-///   5. Allowlist check (restart only): unit must be in cfg.allowed_units().
-///   6. Execute: call executor.run(); write AuditRow on every outcome (ok/denied/error).
+///   4. TOTP lockout: 5 failed codes per 5 minutes → 429 before any verification.
+///   5. TOTP check: code must be valid for the current time step AND not already
+///      used (single-use: replaying an accepted code is denied and audited).
+///   6. Allowlist check (restart only): unit must be in cfg.allowed_units().
+///   7. Execute: call executor.run(); write AuditRow on every outcome (ok/denied/error).
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
@@ -55,6 +57,13 @@ fn audit_op(state: &AppState, actor: &str, op: &str, params: &str, result: &str,
     }
 }
 
+/// Failed-TOTP lockout: mirrors the login throttle (5 failures per 5 minutes).
+const TOTP_MAX_FAILS: u32 = 5;
+const TOTP_FAIL_WINDOW_MS: i64 = 300_000;
+/// How long an accepted code is remembered for replay denial. Covers the full
+/// ±1-step validity window (3 × 30 s), so a code can never be accepted twice.
+const TOTP_REPLAY_TTL_MS: i64 = 90_000;
+
 /// Shared CSRF + TOTP check.
 /// Returns `Ok(())` if both pass, or `Err((StatusCode, reason))` on failure.
 /// The `reason` is a `&'static str` suitable for use as an audit detail.
@@ -79,18 +88,45 @@ fn check_csrf_and_totp(
         return Err((StatusCode::FORBIDDEN, "csrf mismatch"));
     }
 
+    let now_ms = (state.now)();
+
+    // Lockout: too many failed TOTP attempts recently → refuse before verifying,
+    // so a brute-force can't keep probing the code space.
+    {
+        let mut g = state.totp_guard.lock().unwrap();
+        if now_ms - g.fails.1 > TOTP_FAIL_WINDOW_MS {
+            g.fails = (0, now_ms);
+        }
+        if g.fails.0 >= TOTP_MAX_FAILS {
+            return Err((StatusCode::TOO_MANY_REQUESTS, "totp throttled"));
+        }
+    }
+
     // TOTP check.
     let creds = state.creds.lock().unwrap().clone();
-    let now_secs = (state.now)() / 1000;
+    let now_secs = now_ms / 1000;
     let secs = if now_secs < 0 { 0u64 } else { now_secs as u64 };
 
     let totp_ok = Totp::from_base32(&creds.totp_secret_b32)
         .map(|t| t.check(totp_code, secs))
         .unwrap_or(false);
 
+    let mut g = state.totp_guard.lock().unwrap();
+
     if !totp_ok {
+        g.fails.0 += 1;
         return Err((StatusCode::FORBIDDEN, "invalid totp"));
     }
+
+    // Single-use: a code that already authorized an operation is denied (and
+    // counted as a failure — a replay is an attack signal, not a typo).
+    g.used.retain(|(_, at)| now_ms - *at <= TOTP_REPLAY_TTL_MS);
+    if g.used.iter().any(|(c, _)| c == totp_code) {
+        g.fails.0 += 1;
+        return Err((StatusCode::FORBIDDEN, "totp replay (code already used)"));
+    }
+    g.used.push((totp_code.to_string(), now_ms));
+    g.fails = (0, now_ms);
 
     Ok(())
 }

@@ -116,6 +116,17 @@ fn totp_code(state: &AppState) -> String {
         .current(secs)
 }
 
+/// TOTP code for the NEXT time step (still valid in the ±1-step window).
+/// Needed for a second op in the same test: accepted codes are single-use.
+fn totp_code_next(state: &AppState) -> String {
+    let secret = state.creds.lock().unwrap().totp_secret_b32.clone();
+    let now_secs = (state.now)() / 1000;
+    let secs = if now_secs < 0 { 0u64 } else { now_secs as u64 };
+    sentinel_web::auth::totp::Totp::from_base32(&secret)
+        .unwrap()
+        .current(secs + 30)
+}
+
 /// Build a fresh state with fakes injected.
 fn make_state() -> (AppState, Arc<FakeExecutor>) {
     let exec = FakeExecutor::new();
@@ -294,9 +305,10 @@ async fn rollback_after_upgrade_returns_200_and_restores_rollback_point() {
         .unwrap();
     assert_eq!(upgrade_res.status(), StatusCode::OK, "upgrade must succeed first");
 
-    // Now do rollback (with the same TOTP since now() is frozen)
+    // Now do rollback — with the next-step TOTP code: the first one is spent
+    // (accepted codes are single-use) and now() is frozen.
     let rollback_body = serde_json::json!({
-        "totp": totp,
+        "totp": totp_code_next(&state),
     })
     .to_string();
 
@@ -440,7 +452,8 @@ async fn upgrade_with_invalid_current_version_proceeds_no_junk_rollback_point() 
     );
 
     // POST rollback must return 409 (no rollback point stored).
-    let rollback_body = serde_json::json!({ "totp": totp }).to_string();
+    // Next-step code: the first one was spent by the upgrade above.
+    let rollback_body = serde_json::json!({ "totp": totp_code_next(&state) }).to_string();
     let rollback_res = app.clone()
         .oneshot(req_with(
             "POST", "/api/ops/rollback",
