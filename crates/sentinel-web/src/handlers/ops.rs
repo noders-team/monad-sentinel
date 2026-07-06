@@ -90,29 +90,31 @@ fn check_csrf_and_totp(
     }
 
     let now_ms = (state.now)();
+    let creds = state.creds.lock_ok().clone();
+
+    // Hold the guard across check-and-increment: releasing it between the
+    // lockout check and the failure count would let concurrent requests all
+    // pass the "not locked out yet" test and land extra guesses (TOCTOU).
+    // The verification is a fast in-memory HMAC and no other lock is taken
+    // while the guard is held, so there is no contention/deadlock risk.
+    let mut g = state.totp_guard.lock_ok();
 
     // Lockout: too many failed TOTP attempts recently → refuse before verifying,
     // so a brute-force can't keep probing the code space.
-    {
-        let mut g = state.totp_guard.lock_ok();
-        if now_ms - g.fails.1 > TOTP_FAIL_WINDOW_MS {
-            g.fails = (0, now_ms);
-        }
-        if g.fails.0 >= TOTP_MAX_FAILS {
-            return Err((StatusCode::TOO_MANY_REQUESTS, "totp throttled"));
-        }
+    if now_ms - g.fails.1 > TOTP_FAIL_WINDOW_MS {
+        g.fails = (0, now_ms);
+    }
+    if g.fails.0 >= TOTP_MAX_FAILS {
+        return Err((StatusCode::TOO_MANY_REQUESTS, "totp throttled"));
     }
 
     // TOTP check.
-    let creds = state.creds.lock_ok().clone();
     let now_secs = now_ms / 1000;
     let secs = if now_secs < 0 { 0u64 } else { now_secs as u64 };
 
     let totp_ok = Totp::from_base32(&creds.totp_secret_b32)
         .map(|t| t.check(totp_code, secs))
         .unwrap_or(false);
-
-    let mut g = state.totp_guard.lock_ok();
 
     if !totp_ok {
         g.fails.0 += 1;

@@ -65,20 +65,27 @@ async fn main() -> anyhow::Result<()> {
             };
             let totp_secret = generate_secret_base32(rng_bytes);
 
-            bootstrap_store.set_creds(&pw_phc, &totp_secret)?;
-
-            // Verify the secret is decodable before printing (sanity check).
+            // Verify the secret is decodable before persisting (sanity check).
             let _totp = Totp::from_base32(&totp_secret)?;
 
             // Write the secret to an owner-only file instead of stderr: journald
             // retains stderr indefinitely, which would hand the second factor
             // to anyone with journal access.
+            //
+            // ORDER MATTERS: the file must be written BEFORE set_creds. If it
+            // were persisted first and the file write then failed, every later
+            // start would take the "credentials already persisted" branch and
+            // the secret would never be shown anywhere — enrollment stranded
+            // until the operator wipes the whole DB. This way a failed write
+            // aborts before anything is persisted, and the next start retries.
             let enroll_path = std::path::Path::new(&cfg.db_path)
                 .parent()
                 .filter(|p| !p.as_os_str().is_empty())
                 .unwrap_or_else(|| std::path::Path::new("."))
                 .join("totp-enroll.txt");
             sentinel_web::auth::totp::write_enrollment_file(&enroll_path, &totp_secret)?;
+
+            bootstrap_store.set_creds(&pw_phc, &totp_secret)?;
             eprintln!("=== TOTP ENROLLMENT ===");
             eprintln!(
                 "Enrollment secret written to {} — scan it ONCE with your authenticator app, then delete the file.",
