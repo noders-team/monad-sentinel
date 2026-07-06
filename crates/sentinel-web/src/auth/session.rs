@@ -9,6 +9,9 @@ struct Session {
     ttl_ms: i64,
 }
 
+/// Idle timeout: a session not presented for this long is dead.
+const IDLE_MS: i64 = 30 * 60 * 1_000;
+
 pub struct SessionStore {
     inner: Mutex<HashMap<String, Session>>,
 }
@@ -24,10 +27,16 @@ impl SessionStore {
         SessionStore { inner: Mutex::new(HashMap::new()) }
     }
 
-    pub fn create(&self, actor: &str, now_ms: i64, ttl_ms: i64) -> String {
+    /// 256-bit CSPRNG token, hex-encoded. Also used standalone for the CSRF
+    /// value, which is a pure double-submit token and is never stored.
+    pub fn random_token() -> String {
         let mut buf = [0u8; 32];
         rand::rng().fill(&mut buf);
-        let token = hex(&buf);
+        hex(&buf)
+    }
+
+    pub fn create(&self, actor: &str, now_ms: i64, ttl_ms: i64) -> String {
+        let token = Self::random_token();
         self.inner.lock().unwrap().insert(
             token.clone(),
             Session {
@@ -46,8 +55,7 @@ impl SessionStore {
     pub fn validate(&self, token: &str, now_ms: i64) -> Option<String> {
         let mut map = self.inner.lock().unwrap();
         let s = map.get_mut(token)?;
-        let idle_ms: i64 = 30 * 60 * 1_000;
-        if now_ms > s.created_ms + s.ttl_ms || now_ms > s.last_ms + idle_ms {
+        if now_ms > s.created_ms + s.ttl_ms || now_ms > s.last_ms + IDLE_MS {
             map.remove(token);
             return None;
         }
@@ -57,6 +65,23 @@ impl SessionStore {
 
     pub fn remove(&self, token: &str) {
         self.inner.lock().unwrap().remove(token);
+    }
+
+    /// Drop every expired session. `validate` only prunes tokens that are
+    /// presented again, so abandoned sessions need this periodic sweep to keep
+    /// the store from growing for the lifetime of the process.
+    pub fn sweep(&self, now_ms: i64) {
+        self.inner.lock().unwrap().retain(|_, s| {
+            now_ms <= s.created_ms + s.ttl_ms && now_ms <= s.last_ms + IDLE_MS
+        });
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.lock().unwrap().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
@@ -85,5 +110,25 @@ mod tests {
         let tok = s.create("admin", 0, 10_000);
         s.remove(&tok);
         assert_eq!(s.validate(&tok, 1), None);
+    }
+
+    #[test]
+    fn random_token_does_not_grow_the_store() {
+        let s = SessionStore::new();
+        let t1 = SessionStore::random_token();
+        let t2 = SessionStore::random_token();
+        assert_ne!(t1, t2);
+        assert_eq!(t1.len(), 64);
+        assert_eq!(s.len(), 0);
+    }
+
+    #[test]
+    fn sweep_removes_expired_sessions() {
+        let s = SessionStore::new();
+        let _live = s.create("admin", 1_000_000, 10_000_000);
+        let _dead = s.create("admin", 0, 1_000); // absolute expiry long past
+        assert_eq!(s.len(), 2);
+        s.sweep(2_000_000);
+        assert_eq!(s.len(), 1, "expired session must be swept");
     }
 }

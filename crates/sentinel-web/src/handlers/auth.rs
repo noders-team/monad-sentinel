@@ -47,10 +47,15 @@ pub async fn login(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    // Create session and CSRF tokens (TTL: 12 h)
+    // Opportunistic cleanup: drop sessions that expired without being presented
+    // again (validate() only prunes on access), so the store stays bounded.
+    st.sessions.sweep(now);
+
+    // Create the session (TTL: 12 h). The CSRF value is a pure double-submit
+    // token — verified against the request's own cookie, never stored.
     let ttl_ms = 12 * 60 * 60 * 1_000_i64;
     let token = st.sessions.create("admin", now, ttl_ms);
-    let csrf = st.sessions.create(&format!("csrf:{token}"), now, ttl_ms);
+    let csrf = crate::auth::session::SessionStore::random_token();
 
     let secure = !st.cfg.dev_insecure_cookies;
 
