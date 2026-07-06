@@ -70,6 +70,7 @@ impl OpExecutor for SudoSystemctl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sync::LockExt;
 
     struct RecordingExecutor {
         calls: std::sync::Mutex<Vec<Op>>,
@@ -79,7 +80,7 @@ mod tests {
     }
     impl OpExecutor for RecordingExecutor {
         fn run(&self, op: &Op) -> anyhow::Result<String> {
-            self.calls.lock().unwrap().push(op.clone());
+            self.calls.lock_ok().push(op.clone());
             match op {
                 Op::Restart { unit } => Ok(format!("fake-restarted {unit}")),
                 Op::Upgrade { version } => Ok(format!("fake-upgraded {version}")),
@@ -98,7 +99,7 @@ mod tests {
     fn recording_executor_captures_ops() {
         let exec = RecordingExecutor::new();
         exec.run(&Op::Restart { unit: "monad-bft.service".into() }).unwrap();
-        let calls = exec.calls.lock().unwrap();
+        let calls = exec.calls.lock_ok();
         assert_eq!(*calls, vec![Op::Restart { unit: "monad-bft.service".into() }]);
     }
 
@@ -106,7 +107,7 @@ mod tests {
     fn recording_executor_records_upgrade() {
         let exec = RecordingExecutor::new();
         exec.run(&Op::Upgrade { version: "0.14.7".into() }).unwrap();
-        let calls = exec.calls.lock().unwrap();
+        let calls = exec.calls.lock_ok();
         assert_eq!(*calls, vec![Op::Upgrade { version: "0.14.7".into() }]);
     }
 

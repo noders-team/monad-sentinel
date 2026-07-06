@@ -1,3 +1,4 @@
+use crate::sync::LockExt;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
@@ -27,7 +28,7 @@ pub async fn login(
 
     // Rate-limit: max 5 failures per username per 5 minutes (300_000 ms)
     {
-        let mut t = st.login_throttle.lock().unwrap();
+        let mut t = st.login_throttle.lock_ok();
         let e = t.fails.entry(body.username.clone()).or_insert((0, now));
         if now - e.1 > 300_000 {
             *e = (0, now);
@@ -37,11 +38,11 @@ pub async fn login(
         }
     }
 
-    let creds = st.creds.lock().unwrap().clone();
+    let creds = st.creds.lock_ok().clone();
     let ok = body.username == "admin" && password::verify(&body.password, &creds.pw_phc);
 
     if !ok {
-        let mut t = st.login_throttle.lock().unwrap();
+        let mut t = st.login_throttle.lock_ok();
         let e = t.fails.entry(body.username.clone()).or_insert((0, now));
         e.0 += 1;
         return Err(StatusCode::UNAUTHORIZED);

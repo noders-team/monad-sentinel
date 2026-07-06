@@ -12,6 +12,7 @@
 ///      used (single-use: replaying an accepted code is denied and audited).
 ///   6. Allowlist check (restart only): unit must be in cfg.allowed_units().
 ///   7. Execute: call executor.run(); write AuditRow on every outcome (ok/denied/error).
+use crate::sync::LockExt;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
@@ -93,7 +94,7 @@ fn check_csrf_and_totp(
     // Lockout: too many failed TOTP attempts recently → refuse before verifying,
     // so a brute-force can't keep probing the code space.
     {
-        let mut g = state.totp_guard.lock().unwrap();
+        let mut g = state.totp_guard.lock_ok();
         if now_ms - g.fails.1 > TOTP_FAIL_WINDOW_MS {
             g.fails = (0, now_ms);
         }
@@ -103,7 +104,7 @@ fn check_csrf_and_totp(
     }
 
     // TOTP check.
-    let creds = state.creds.lock().unwrap().clone();
+    let creds = state.creds.lock_ok().clone();
     let now_secs = now_ms / 1000;
     let secs = if now_secs < 0 { 0u64 } else { now_secs as u64 };
 
@@ -111,7 +112,7 @@ fn check_csrf_and_totp(
         .map(|t| t.check(totp_code, secs))
         .unwrap_or(false);
 
-    let mut g = state.totp_guard.lock().unwrap();
+    let mut g = state.totp_guard.lock_ok();
 
     if !totp_ok {
         g.fails.0 += 1;

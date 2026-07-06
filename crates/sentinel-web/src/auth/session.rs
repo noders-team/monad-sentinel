@@ -1,3 +1,4 @@
+use crate::sync::LockExt;
 use rand::RngExt;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -37,7 +38,7 @@ impl SessionStore {
 
     pub fn create(&self, actor: &str, now_ms: i64, ttl_ms: i64) -> String {
         let token = Self::random_token();
-        self.inner.lock().unwrap().insert(
+        self.inner.lock_ok().insert(
             token.clone(),
             Session {
                 actor: actor.to_string(),
@@ -53,7 +54,7 @@ impl SessionStore {
     /// Enforces both absolute expiry (created_ms + ttl_ms) and idle timeout (30 min).
     /// Removes expired tokens on access.
     pub fn validate(&self, token: &str, now_ms: i64) -> Option<String> {
-        let mut map = self.inner.lock().unwrap();
+        let mut map = self.inner.lock_ok();
         let s = map.get_mut(token)?;
         if now_ms > s.created_ms + s.ttl_ms || now_ms > s.last_ms + IDLE_MS {
             map.remove(token);
@@ -64,20 +65,20 @@ impl SessionStore {
     }
 
     pub fn remove(&self, token: &str) {
-        self.inner.lock().unwrap().remove(token);
+        self.inner.lock_ok().remove(token);
     }
 
     /// Drop every expired session. `validate` only prunes tokens that are
     /// presented again, so abandoned sessions need this periodic sweep to keep
     /// the store from growing for the lifetime of the process.
     pub fn sweep(&self, now_ms: i64) {
-        self.inner.lock().unwrap().retain(|_, s| {
+        self.inner.lock_ok().retain(|_, s| {
             now_ms <= s.created_ms + s.ttl_ms && now_ms <= s.last_ms + IDLE_MS
         });
     }
 
     pub fn len(&self) -> usize {
-        self.inner.lock().unwrap().len()
+        self.inner.lock_ok().len()
     }
 
     pub fn is_empty(&self) -> bool {

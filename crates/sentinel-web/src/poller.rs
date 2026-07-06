@@ -1,3 +1,4 @@
+use crate::sync::LockExt;
 use sentinel_agent::{parse::parse, notify::{format_message, Notifier}};
 use sentinel_agent::rules::{Engine, Fired};
 use sentinel_agent::state::State;
@@ -22,13 +23,13 @@ pub fn tick(
 
     // Collect tracked metric names while holding engine lock; release before touching live.
     let tracked: Vec<String> = {
-        let eng = engine.lock().unwrap();
+        let eng = engine.lock_ok();
         eng.tracked_metrics().iter().map(|s| s.to_string()).collect()
     };
 
     // Record tracked metrics into in-memory state and persistent store.
     {
-        let mut st = live.lock().unwrap();
+        let mut st = live.lock_ok();
         for name in &tracked {
             if let Some(v) = snap.value(name) {
                 st.record(name, now_ms, v);
@@ -41,8 +42,8 @@ pub fn tick(
 
     // Run alert evaluation: acquire engine first, then live (matches invariant).
     let fired = {
-        let mut eng = engine.lock().unwrap();
-        let st = live.lock().unwrap();
+        let mut eng = engine.lock_ok();
+        let st = live.lock_ok();
         eng.evaluate(&st, &snap, now_ms)
     };
 
@@ -88,7 +89,7 @@ pub fn spawn_loop(
                     );
                     // Push fired alerts into the in-memory buffer (cap ALERTS_CAP, newest at back).
                     if !fired.is_empty() {
-                        let mut buf = state.alerts.lock().unwrap();
+                        let mut buf = state.alerts.lock_ok();
                         for f in fired {
                             if buf.len() >= ALERTS_CAP {
                                 buf.pop_front();

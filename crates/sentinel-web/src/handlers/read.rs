@@ -1,3 +1,4 @@
+use crate::sync::LockExt;
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
@@ -85,7 +86,7 @@ pub async fn get_alerts(
     _actor: AuthActor,
     State(st): State<AppState>,
 ) -> Json<serde_json::Value> {
-    let buf = st.alerts.lock().unwrap();
+    let buf = st.alerts.lock_ok();
     let records: Vec<&AlertRecord> = buf.iter().rev().collect();
     Json(json!(records))
 }

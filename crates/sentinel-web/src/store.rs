@@ -1,3 +1,4 @@
+use crate::sync::LockExt;
 use anyhow::Result;
 use rusqlite::Connection;
 use std::sync::Mutex;
@@ -37,14 +38,14 @@ impl Store {
     }
 
     pub fn append_metric(&self, name: &str, ts_ms: i64, value: f64) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock_ok();
         conn.execute("INSERT INTO metrics (name, ts_ms, value) VALUES (?1, ?2, ?3)",
             rusqlite::params![name, ts_ms, value])?;
         Ok(())
     }
 
     pub fn query_window(&self, name: &str, since_ms: i64) -> Result<Vec<(i64, f64)>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock_ok();
         let mut stmt = conn.prepare(
             "SELECT ts_ms, value FROM metrics WHERE name = ?1 AND ts_ms >= ?2 ORDER BY ts_ms ASC")?;
         let rows = stmt.query_map(rusqlite::params![name, since_ms], |r| Ok((r.get(0)?, r.get(1)?)))?;
@@ -52,12 +53,12 @@ impl Store {
     }
 
     pub fn prune_metrics(&self, older_than_ms: i64) -> Result<usize> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock_ok();
         Ok(conn.execute("DELETE FROM metrics WHERE ts_ms < ?1", rusqlite::params![older_than_ms])?)
     }
 
     pub fn append_audit(&self, row: &AuditRow) -> Result<i64> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock_ok();
         conn.execute(
             "INSERT INTO audit (ts_ms, actor, op, params, result, detail) VALUES (?1,?2,?3,?4,?5,?6)",
             rusqlite::params![row.ts_ms, row.actor, row.op, row.params, row.result, row.detail])?;
@@ -65,7 +66,7 @@ impl Store {
     }
 
     pub fn list_audit(&self, limit: usize) -> Result<Vec<AuditRow>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock_ok();
         let mut stmt = conn.prepare(
             "SELECT ts_ms, actor, op, params, result, detail FROM audit ORDER BY id DESC LIMIT ?1")?;
         let rows = stmt.query_map(rusqlite::params![limit as i64], |r| Ok(AuditRow {
@@ -78,7 +79,7 @@ impl Store {
     /// Return `(pw_phc, totp_secret_b32)` from the persisted credentials row, or `None` on a
     /// fresh database. The `creds` table enforces a single-row invariant via `CHECK (id=1)`.
     pub fn get_creds(&self) -> Result<Option<(String, String)>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock_ok();
         let mut stmt = conn.prepare(
             "SELECT pw_phc, totp_secret_b32 FROM creds WHERE id = 1")?;
         let mut rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
@@ -90,7 +91,7 @@ impl Store {
 
     /// Persist (or replace) the single credentials row.
     pub fn set_creds(&self, pw_phc: &str, totp_secret_b32: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock_ok();
         conn.execute(
             "INSERT OR REPLACE INTO creds (id, pw_phc, totp_secret_b32) VALUES (1, ?1, ?2)",
             rusqlite::params![pw_phc, totp_secret_b32],
@@ -99,14 +100,14 @@ impl Store {
     }
 
     pub fn set_meta(&self, key: &str, value: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock_ok();
         conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)",
             rusqlite::params![key, value])?;
         Ok(())
     }
 
     pub fn get_meta(&self, key: &str) -> Result<Option<String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock_ok();
         let mut stmt = conn.prepare("SELECT value FROM meta WHERE key = ?1")?;
         let mut rows = stmt.query(rusqlite::params![key])?;
         match rows.next()? {
