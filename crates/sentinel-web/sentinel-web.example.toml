@@ -1,7 +1,12 @@
 # Sentinel Console (sentinel-web) non-secret config. Secrets via env:
 #   SENTINEL_ADMIN_PASSWORD (first-run bootstrap)
 listen_addr = "127.0.0.1:8088"   # localhost only; reach via Tailscale/VPN
-db_path = "sentinel-web.sqlite"
+
+# Absolute paths: under systemd the working directory is not the repo checkout,
+# and ProtectSystem=strict makes everything outside ReadWritePaths read-only.
+db_path = "/var/lib/sentinel/sentinel-web.sqlite"
+frontend_dist = "/opt/sentinel/frontend/dist"
+
 scrape_interval_ms = 5000
 metrics_url = "http://localhost:8889/metrics"
 dev_insecure_cookies = false     # true ONLY for plain-localhost dev (drops Secure flag)

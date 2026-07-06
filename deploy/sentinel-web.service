@@ -8,6 +8,10 @@ Wants=network-online.target
 User=sentinel
 SupplementaryGroups=systemd-journal
 
+# Safety net for relative paths in the config (db_path etc.): resolve them in the
+# writable state dir instead of "/", which is read-only under ProtectSystem=strict.
+WorkingDirectory=/var/lib/sentinel
+
 # Environment variables are in the env file; the unit file must not contain secrets.
 EnvironmentFile=/etc/sentinel/sentinel-web.env
 
