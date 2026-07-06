@@ -12,3 +12,12 @@
 # Frontend build artifacts
 frontend/node_modules
 frontend/dist
+
+# MSW demo worker: must never be tracked — anything in public/ is copied
+# verbatim into every production dist/, and a served worker script is a
+# persistent fetch-interception primitive if any future XSS registers it.
+# Regenerate locally for demo builds: npx msw init public/
+frontend/public/mockServiceWorker.js
+
+# Local git worktrees
+.worktrees/
